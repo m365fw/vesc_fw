@@ -161,6 +161,15 @@
 #define HW_UART_RX_PORT			GPIOB
 #define HW_UART_RX_PIN			11
 
+// Permanent UART Peripheral (for NRF51)
+#define HW_UART_P_BAUD			115200
+#define HW_UART_P_DEV			SD1
+#define HW_UART_P_GPIO_AF		GPIO_AF_USART1
+#define HW_UART_P_TX_PORT		GPIOB
+#define HW_UART_P_TX_PIN		6
+#define HW_UART_P_RX_PORT		GPIOB
+#define HW_UART_P_RX_PIN		7
+
 // ICU Peripheral for servo decoding
 #define HW_USE_SERVO_TIM4
 #define HW_ICU_TIMER			TIM4

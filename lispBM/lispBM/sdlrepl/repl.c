@@ -30,6 +30,7 @@
 #include "extensions/array_extensions.h"
 #include "extensions/string_extensions.h"
 #include "extensions/math_extensions.h"
+#include "extensions/random_extensions.h"
 
 #include "lbm_custom_type.h"
 #include "lbm_sdl.h"
@@ -479,8 +480,8 @@ void sym_it(const char *str) {
   printf("%s\n", str);
 }
 
-static lbm_uint memory[LBM_MEMORY_SIZE_8K];
-static lbm_uint bitmap[LBM_MEMORY_BITMAP_SIZE_8K];
+static lbm_uint memory[LBM_MEMORY_SIZE_1M];
+static lbm_uint bitmap[LBM_MEMORY_BITMAP_SIZE_1M];
 
 char char_array[1024];
 lbm_uint word_array[1024];
@@ -512,8 +513,8 @@ int main(int argc, char **argv) {
 
   if (!lbm_init(heap_storage, heap_size,
                 gc_stack_storage, GC_STACK_SIZE,
-                memory, LBM_MEMORY_SIZE_8K,
-                bitmap, LBM_MEMORY_BITMAP_SIZE_8K,
+                memory, LBM_MEMORY_SIZE_1M,
+                bitmap, LBM_MEMORY_BITMAP_SIZE_1M,
                 print_stack_storage, PRINT_STACK_SIZE,
                 extension_storage, EXTENSION_STORAGE_SIZE)) {
     printf("Failed to initialize LispBM\n");
@@ -547,6 +548,12 @@ int main(int argc, char **argv) {
     printf("Loading math extensions failed\n");
   }
 
+  if (lbm_random_extensions_init()) {
+    printf("Random extensions loaded\n");
+  } else {
+    printf("Loading random extensions failed\n");
+  }
+
   res = lbm_add_extension("block", ext_block);
   if (res)
     printf("Extension added.\n");
@@ -554,12 +561,6 @@ int main(int argc, char **argv) {
     printf("Error adding extension.\n");
 
   res = lbm_add_extension("print", ext_print);
-  if (res)
-    printf("Extension added.\n");
-  else
-    printf("Error adding extension.\n");
-
-  res = lbm_add_extension("range", ext_range);
   if (res)
     printf("Extension added.\n");
   else
@@ -677,23 +678,11 @@ int main(int argc, char **argv) {
       lbm_running_iterator(print_ctx_info, NULL, NULL);
       printf("****** Blocked contexts ******\n");
       lbm_blocked_iterator(print_ctx_info, NULL, NULL);
-      printf("****** Done contexts ******\n");
-      lbm_done_iterator(print_ctx_info, NULL, NULL);
       free(str);
     } else if (strncmp(str, ":unblock", 8) == 0) {
       int id = atoi(str + 8);
       printf("Unblocking: %d\n", id);
       lbm_unblock_ctx(id, lbm_enc_i(42));
-      free(str);
-    } else if (strncmp(str, ":wait", 5) == 0) {
-      int id = atoi(str + 5);
-      bool exists = false;
-      lbm_done_iterator(ctx_exists, (void*)&id, (void*)&exists);
-      if (exists) {
-        if (!lbm_wait_ctx((lbm_cid)id, WAIT_TIMEOUT)) {
-          printf("Timout while waiting for context %d\n", id);
-        }
-      }
       free(str);
     } else if (n >= 5 && strncmp(str, ":quit", 5) == 0) {
       free(str);
@@ -716,8 +705,8 @@ int main(int argc, char **argv) {
 
         lbm_init(heap_storage, heap_size,
                  gc_stack_storage, GC_STACK_SIZE,
-                 memory, LBM_MEMORY_SIZE_8K,
-                 bitmap, LBM_MEMORY_BITMAP_SIZE_8K,
+                 memory, LBM_MEMORY_SIZE_1M,
+                 bitmap, LBM_MEMORY_BITMAP_SIZE_1M,
                  print_stack_storage, PRINT_STACK_SIZE,
                  extension_storage, EXTENSION_STORAGE_SIZE);
 
@@ -758,8 +747,8 @@ int main(int argc, char **argv) {
 
       lbm_init(heap_storage, heap_size,
                gc_stack_storage, GC_STACK_SIZE,
-               memory, LBM_MEMORY_SIZE_8K,
-               bitmap, LBM_MEMORY_BITMAP_SIZE_8K,
+               memory, LBM_MEMORY_SIZE_1M,
+               bitmap, LBM_MEMORY_BITMAP_SIZE_1M,
                print_stack_storage, PRINT_STACK_SIZE,
                extension_storage, EXTENSION_STORAGE_SIZE);
 
@@ -814,12 +803,6 @@ int main(int argc, char **argv) {
       free(str);
     } else if (strncmp(str, ":continue", 9) == 0) {
       lbm_continue_eval();
-      free(str);
-    } else if (strncmp(str, ":step", 5) == 0) {
-
-      int num = atoi(str + 5);
-
-      lbm_step_n_eval((uint32_t)num);
       free(str);
     } else if (strncmp(str, ":undef", 6) == 0) {
       lbm_pause_eval();

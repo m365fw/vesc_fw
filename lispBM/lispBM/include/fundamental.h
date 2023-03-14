@@ -23,10 +23,13 @@
 #ifndef _FUNDAMENTAL_H_
 #define _FUNDAMENTAL_H_
 
+#include <eval_cps.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-bool struct_eq(lbm_value a, lbm_value b);
+  extern const fundamental_fun fundamental_table[];
+  bool struct_eq(lbm_value a, lbm_value b);
 #ifdef __cplusplus
 }
 #endif

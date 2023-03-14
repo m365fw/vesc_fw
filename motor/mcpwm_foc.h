@@ -81,6 +81,9 @@ float mcpwm_foc_get_mod_alpha_raw(void);
 float mcpwm_foc_get_mod_beta_raw(void);
 float mcpwm_foc_get_mod_alpha_measured(void);
 float mcpwm_foc_get_mod_beta_measured(void);
+float mcpwm_foc_get_est_lambda(void);
+float mcpwm_foc_get_est_res(void);
+float mcpwm_foc_get_est_ind(void);
 int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ratio, bool *inverted);
 int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, float *resistance);
 int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld_lq_diff, float *inductance);
@@ -109,6 +112,11 @@ void mcpwm_foc_get_voltage_offsets_undriven(
 		float *v0_offset,
 		float *v1_offset,
 		float *v2_offset,
+		bool is_second_motor);
+void mcpwm_foc_get_currents_adc(
+		float *ph0,
+		float *ph1,
+		float *ph2,
 		bool is_second_motor);
 float mcpwm_foc_get_ts(void);
 bool mcpwm_foc_is_using_encoder(void);

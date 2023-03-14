@@ -41,6 +41,8 @@
 #include "conf_general.h"
 #include "servo_dec.h"
 #include "servo_simple.h"
+#include "flash_helper.h"
+#include "mcpwm_foc.h"
 
 // Function prototypes otherwise missing
 void packet_init(void (*s_func)(unsigned char *data, unsigned int len),
@@ -85,8 +87,8 @@ static THD_FUNCTION(lib_thd, arg) {
 	lib_thd_info *t = (lib_thd_info*)arg;
 	chRegSetThreadName(t->name);
 	t->func(t->arg);
-	lispif_free(t->w_mem);
-	lispif_free(t);
+	lbm_free(t->w_mem);
+	lbm_free(t);
 }
 
 static lib_thread lib_spawn(void (*func)(void*), size_t stack_size, char *name, void *arg) {
@@ -95,10 +97,10 @@ static lib_thread lib_spawn(void (*func)(void*), size_t stack_size, char *name, 
 		return 0;
 	}
 
-	void *mem = lispif_malloc(stack_size);
+	void *mem = lbm_malloc_reserve(stack_size);
 
 	if (mem) {
-		lib_thd_info *info = lispif_malloc(sizeof(lib_thd_info));
+		lib_thd_info *info = lbm_malloc_reserve(sizeof(lib_thd_info));
 
 		if (info) {
 			info->arg = arg;
@@ -556,7 +558,7 @@ static bool lib_eval_is_paused(void) {
 }
 
 static lib_mutex lib_mutex_create(void) {
-	mutex_t *m = lispif_malloc(sizeof(mutex_t));
+	mutex_t *m = lbm_malloc_reserve(sizeof(mutex_t));
 	chMtxObjectInit(m);
 	return (lib_mutex)m;
 }
@@ -655,8 +657,8 @@ lbm_value ext_load_native_lib(lbm_value *args, lbm_uint argn) {
 		cif.cif.system_time = lib_system_time;
 		cif.cif.ts_to_age_s = lib_ts_to_age_s;
 		cif.cif.printf = commands_printf_lisp;
-		cif.cif.malloc = lispif_malloc;
-		cif.cif.free = lispif_free;
+		cif.cif.malloc = lbm_malloc_reserve;
+		cif.cif.free = lbm_free;
 		cif.cif.spawn = lib_spawn;
 		cif.cif.request_terminate = lib_request_terminate;
 		cif.cif.should_terminate = lib_should_terminate;
@@ -872,6 +874,21 @@ lbm_value ext_load_native_lib(lbm_value *args, lbm_uint argn) {
 		cif.cif.get_ppm_age = lib_get_ppm_age;
 		cif.cif.app_is_output_disabled = app_is_output_disabled;
 
+		// NVM
+		cif.cif.read_nvm = flash_helper_read_nvm;
+		cif.cif.write_nvm = flash_helper_write_nvm;
+		cif.cif.wipe_nvm = flash_helper_wipe_nvm;
+
+		// FOC
+		cif.cif.foc_get_id = mcpwm_foc_get_id_filter;
+		cif.cif.foc_get_iq = mcpwm_foc_get_iq_filter;
+		cif.cif.foc_get_vd = mcpwm_foc_get_vd;
+		cif.cif.foc_get_vq = mcpwm_foc_get_vq;
+		cif.cif.foc_set_openloop_current = mcpwm_foc_set_openloop_current;
+		cif.cif.foc_set_openloop_phase = mcpwm_foc_set_openloop_phase;
+		cif.cif.foc_set_openloop_duty = mcpwm_foc_set_openloop_duty;
+		cif.cif.foc_set_openloop_duty_phase = mcpwm_foc_set_openloop_duty_phase;
+
 		lib_init_done = true;
 	}
 
@@ -957,21 +974,6 @@ void lispif_stop_lib(void) {
 	}
 
 	lib_running_threads_cnt = 0;
-}
-
-void* lispif_malloc(size_t size) {
-	lbm_uint alloc_size;
-	if (size % sizeof(lbm_uint) == 0) {
-		alloc_size = size / (sizeof(lbm_uint));
-	} else {
-		alloc_size = (size / (sizeof(lbm_uint))) + 1;
-	}
-
-	return lbm_memory_allocate(alloc_size);
-}
-
-void lispif_free(void *ptr) {
-	lbm_memory_free(ptr);
 }
 
 float lispif_get_ppm(void) {

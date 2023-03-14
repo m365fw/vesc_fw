@@ -27,9 +27,11 @@
 #include <ctype.h>
 
 #include "lispbm.h"
+#include "lbm_flat_value.h"
 #include "extensions/array_extensions.h"
 #include "extensions/string_extensions.h"
 #include "extensions/math_extensions.h"
+#include "extensions/runtime_extensions.h"
 
 #include "lbm_custom_type.h"
 #include "lbm_channel.h"
@@ -268,40 +270,40 @@ bool dyn_load(const char *str, const char **code) {
     res = true;
   } else if (strlen(str) == 6 && strncmp(str, "length", 6) == 0) {
     *code = "(define length (lambda (xs)"
-	    "(let ((len (lambda (l xs)"
-	    "(if (eq xs nil) l"
-	    "(len (+ l 1) (cdr xs))))))"
+            "(let ((len (lambda (l xs)"
+            "(if (eq xs nil) l"
+            "(len (+ l 1) (cdr xs))))))"
             "(len 0 xs))))";
     res = true;
   } else if (strlen(str) == 4 && strncmp(str, "take", 4) == 0) {
     *code = "(define take (lambda (n xs)"
-	    "(let ((take-tail (lambda (acc n xs)"
-	    "(if (= n 0) acc"
-	    "(take-tail (cons (car xs) acc) (- n 1) (cdr xs))))))"
+            "(let ((take-tail (lambda (acc n xs)"
+            "(if (= n 0) acc"
+            "(take-tail (cons (car xs) acc) (- n 1) (cdr xs))))))"
             "(reverse (take-tail nil n xs)))))";
     res = true;
   } else if (strlen(str) == 4 && strncmp(str, "drop", 4) == 0) {
     *code = "(define drop (lambda (n xs)"
-	    "(if (= n 0) xs"
-	    "(if (eq xs nil) nil"
+            "(if (= n 0) xs"
+            "(if (eq xs nil) nil"
             "(drop (- n 1) (cdr xs))))))";
     res = true;
   } else if (strlen(str) == 3 && strncmp(str, "zip", 3) == 0) {
     *code = "(define zip (lambda (xs ys)"
-	    "(if (eq xs nil) nil"
-	    "(if (eq ys nil) nil"
+            "(if (eq xs nil) nil"
+            "(if (eq ys nil) nil"
             "(cons (cons (car xs) (car ys)) (zip (cdr xs) (cdr ys)))))))";
     res = true;
   } else if (strlen(str) == 6 && strncmp(str, "lookup", 6) == 0) {
     *code = "(define lookup (lambda (x xs)"
-	    "(if (eq xs nil) nil"
-	    "(if (eq (car (car xs)) x)"
-	    "(car (cdr (car xs)))"
+            "(if (eq xs nil) nil"
+            "(if (eq (car (car xs)) x)"
+            "(car (cdr (car xs)))"
             "(lookup x (cdr xs))))))";
     res = true;
   } else if (strlen(str) == 5 && strncmp(str, "foldr", 5) == 0) {
     *code = "(define foldr (lambda (f i xs)"
-	    "(if (eq xs nil) i"
+            "(if (eq xs nil) i"
             "(f (car xs) (foldr f i (cdr xs))))))";
     res = true;
   } else if (strlen(str) == 5 && strncmp(str, "foldl", 5) == 0) {
@@ -354,6 +356,56 @@ lbm_value ext_print(lbm_value *args, lbm_uint argn) {
   return lbm_enc_sym(SYM_TRUE);
 }
 
+lbm_value ext_unflatten(lbm_value *args, lbm_uint argn) {
+  (void) args;
+  (void) argn;
+
+  char *array = lbm_malloc(12);
+  array[0] = 'h';
+  array[1] = 'e';
+  array[2] = 'l';
+  array[3] = 'l';
+  array[4] = 'o';
+  array[5] = ' ';
+  array[6] = 'w';
+  array[7] = 'o';
+  array[8] = 'r';
+  array[9] = 'l';
+  array[10] = 'd';
+  array[11] = 0;
+    
+  
+  lbm_flat_value_t v;
+  
+  if (lbm_start_flatten(&v, 100)) {
+    //  ((1 2 3 {3.000000} {51539607556} "hello world") . t)    
+    f_cons(&v);
+    f_cons(&v); 
+    f_i(&v, 1);
+    f_cons(&v); 
+    f_i(&v, 2);
+    f_cons(&v); 
+    f_i(&v, 3);
+    f_cons(&v); 
+    f_float(&v, 3.14f);
+    f_cons(&v); 
+    f_u64(&v, 0xFFFF0000FFFF0000);
+    f_cons(&v);
+    f_lbm_array(&v, 12, LBM_TYPE_CHAR, (uint8_t*)array);
+    f_sym(&v, SYM_NIL);
+    f_sym(&v, SYM_TRUE);
+    lbm_finish_flatten(&v);
+    
+    
+    v.buf_pos = 0;
+    lbm_value res;
+    lbm_unflatten_value(&v, &res);
+    return res; 
+  } else {
+    return ENC_SYM_NIL;
+  }
+}
+
 char output[128];
 
 static lbm_value ext_range(lbm_value *args, lbm_uint argn) {
@@ -393,6 +445,19 @@ static lbm_value ext_custom(lbm_value *args, lbm_uint argn) {
   return res;
 }
 
+static lbm_value ext_event(lbm_value *args, lbm_uint argn) {
+
+  if (argn != 1 || !lbm_is_symbol(args[0])) return ENC_SYM_EERROR;
+
+  lbm_flat_value_t v;
+  if (lbm_start_flatten(&v,5)) {
+    f_sym(&v, lbm_dec_sym(args[0]));
+    lbm_finish_flatten(&v);
+    lbm_event(&v);
+    return ENC_SYM_TRUE;
+  }
+  return ENC_SYM_NIL;
+}
 
 /* load a file, caller is responsible for freeing the returned string */
 char * load_file(char *filename) {
@@ -474,7 +539,7 @@ void lookup_local(eval_context_t *ctx, void *arg1, void *arg2) {
   } else {
     printf("not found\n");
   }
-  
+
 }
 
 
@@ -497,7 +562,7 @@ int main(int argc, char **argv) {
   pthread_mutex_init(&mut, NULL);
 
   lbm_heap_state_t heap_state;
-  unsigned int heap_size = 8192;
+  unsigned int heap_size = 2048;
   lbm_cons_t *heap_storage = NULL;
 
   for (int i = 0; i < 1024; i ++) {
@@ -519,6 +584,11 @@ int main(int argc, char **argv) {
                 print_stack_storage, PRINT_STACK_SIZE,
                 extension_storage, EXTENSION_STORAGE_SIZE)) {
     printf("Failed to initialize LispBM\n");
+    return 0;
+  }
+
+  if (!lbm_eval_init_events(20)) {
+    printf("Failed to initialize events\n");
     return 0;
   }
 
@@ -549,6 +619,12 @@ int main(int argc, char **argv) {
     printf("Loading math extensions failed\n");
   }
 
+  if (lbm_runtime_extensions_init(false)) {
+    printf("Runtime extensions loaded\n");
+  } else {
+    printf("Loading runtime extensions failed\n");
+  }
+
   res = lbm_add_extension("block", ext_block);
   if (res)
     printf("Extension added.\n");
@@ -568,6 +644,18 @@ int main(int argc, char **argv) {
     printf("Error adding extension.\n");
 
   res = lbm_add_extension("custom", ext_custom);
+  if (res)
+    printf("Extension added.\n");
+  else
+    printf("Error adding extension.\n");
+
+  res = lbm_add_extension("event", ext_event);
+  if (res)
+    printf("Extension added.\n");
+  else
+    printf("Error adding extension.\n");
+
+  res = lbm_add_extension("unflatten", ext_unflatten);
   if (res)
     printf("Extension added.\n");
   else
@@ -679,25 +767,8 @@ int main(int argc, char **argv) {
       lbm_blocked_iterator(print_ctx_info, NULL, NULL);
       printf("****** Sleeping contexts *****\n");
       lbm_sleeping_iterator(print_ctx_info, NULL, NULL);
-      printf("****** Done contexts ******\n");
-      lbm_done_iterator(print_ctx_info, NULL, NULL);
       free(str);
-    } else if (strncmp(str, ":unblock", 8) == 0) {
-      int id = atoi(str + 8);
-      printf("Unblocking: %d\n", id);
-      lbm_unblock_ctx(id, lbm_enc_i(42));
-      free(str);
-    } else if (strncmp(str, ":wait", 5) == 0) {
-      int id = atoi(str + 5);
-      bool exists = false;
-      lbm_done_iterator(ctx_exists, (void*)&id, (void*)&exists);
-      if (exists) {
-        if (!lbm_wait_ctx((lbm_cid)id, WAIT_TIMEOUT)) {
-          printf("Timout while waiting for context %d\n", id);
-        }
-      }
-      free(str);
-    } else if (n >= 5 && strncmp(str, ":quit", 5) == 0) {
+    }  else if (n >= 5 && strncmp(str, ":quit", 5) == 0) {
       free(str);
       break;
     } else if (strncmp(str, ":symbols", 8) == 0) {
@@ -821,16 +892,15 @@ int main(int argc, char **argv) {
 
       int i = 8;
       if (strlen(str) >= 8) {
-	while (str[i] == ' ') i++;
+        while (str[i] == ' ') i++;
       }
       char *sym = str + i;
       lbm_uint sym_id = 0;
       if (lbm_get_symbol_by_name(sym, &sym_id)) {
-	lbm_running_iterator(lookup_local, (void*)lbm_enc_sym(sym_id), (void*)sym);
-	lbm_blocked_iterator(lookup_local, (void*)lbm_enc_sym(sym_id), (void*)sym);
-			     lbm_done_iterator(lookup_local, (void*)lbm_enc_sym(sym_id), (void*)sym);
+        lbm_running_iterator(lookup_local, (void*)lbm_enc_sym(sym_id), (void*)sym);
+        lbm_blocked_iterator(lookup_local, (void*)lbm_enc_sym(sym_id), (void*)sym);
       } else {
-	printf("symbol does not exist\n");
+        printf("symbol does not exist\n");
       }
     } else if (strncmp(str, ":undef", 6) == 0) {
       lbm_pause_eval_with_gc(50);

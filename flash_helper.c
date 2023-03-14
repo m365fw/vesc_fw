@@ -463,3 +463,47 @@ static void qmlui_check(int ind) {
 
 	code_checks[ind].check_done = true;
 }
+
+#define VESC_IF_NVM_REGION_SIZE	(ADDR_FLASH_SECTOR_9 - ADDR_FLASH_SECTOR_8)
+
+/**
+  * @brief  Reads len bytes to v from nvm at address
+  * @param	v: array of bytes to which the result will be written
+  * @param	len: number of bytes to read
+  * @param	address: address of the first byte
+  * @retval Boolean indicating success or failure
+  */
+bool flash_helper_read_nvm(uint8_t *v, unsigned int len, unsigned int address) {
+	if ((address + len) > VESC_IF_NVM_REGION_SIZE) {
+		return false;
+	}
+
+	memcpy(v, (uint8_t*)(ADDR_FLASH_SECTOR_8 + address), len);
+
+	return true;
+}
+
+/**
+  * @brief  Writes len bytes from v to nvm at address
+  * @param	v: array of bytes to write
+  * @param	len: number of bytes to write
+  * @param	address: address of the first byte
+  * @retval Boolean indicating success or failure
+  */
+bool flash_helper_write_nvm(uint8_t *v, unsigned int len, unsigned int address) {
+	if ((address + len) > VESC_IF_NVM_REGION_SIZE) {
+		return false;
+	}
+
+	uint16_t res = write_data(ADDR_FLASH_SECTOR_8 + address, v, len);
+
+	return (res == FLASH_COMPLETE);
+}
+
+/**
+  * @brief  Erase region of NVM used by packages.
+  * @retval Boolean indicating success or failure
+  */
+bool flash_helper_wipe_nvm(void) {
+	return (erase_sector(flash_sector[8]) == FLASH_COMPLETE);
+}

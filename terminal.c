@@ -587,6 +587,11 @@ void terminal_process_string(char *str) {
 				STM32_UUID_8[4], STM32_UUID_8[5], STM32_UUID_8[6], STM32_UUID_8[7],
 				STM32_UUID_8[8], STM32_UUID_8[9], STM32_UUID_8[10], STM32_UUID_8[11]);
 		commands_printf("Permanent NRF found: %s", conf_general_permanent_nrf_found ? "Yes" : "No");
+#ifdef HW_HAS_PHASE_SHUNTS
+		commands_printf("Phase Shunts: Yes");
+#else
+		commands_printf("Phase Shunts: No");
+#endif
 
 		commands_printf("Odometer : %llu m", mc_interface_get_odometer());
 		commands_printf("Runtime  : %llu s", g_backup.runtime);
@@ -626,6 +631,10 @@ void terminal_process_string(char *str) {
 
 #if defined (V_REG) && defined (CURRENT_AMP_GAIN) && defined(CURRENT_SHUNT_RES)
 		commands_printf("Current Measurement Range: %.1f A", (double)((V_REG / 2.0) / (CURRENT_AMP_GAIN * CURRENT_SHUNT_RES)));
+#endif
+
+#if defined (V_REG) && defined (VIN_R1) && defined(VIN_R2)
+		commands_printf("Voltage Measurement Range: %.1f V", (double)((V_REG / 4095.0) * 4095.0 * ((VIN_R1 + VIN_R2) / VIN_R2)));
 #endif
 
 #ifdef HW_DEAD_TIME_NSEC

@@ -38,6 +38,7 @@ package_dict["60_MK5"] = [['60_mk5', default_name],
                     ['60_mk5_no_limits', no_limits_name]]
 package_dict["60_MK6"] = [['60_mk6', default_name],
                     ['60_mk6_no_limits', no_limits_name]]
+package_dict["60_MK6_MAX"] = [['60_mk6_max', default_name]]
 package_dict["DAS_RS"] = [['das_rs', default_name]]
 package_dict["75_300"] = [['75_300', default_name],
                     ['75_300_no_limits', no_limits_name]]
@@ -51,10 +52,13 @@ package_dict["HD60"] = [['hd60', default_name],
                     ['hd60_no_limits', no_limits_name]]
 package_dict["HD75"] = [['hd75', default_name],
                     ['hd75_no_limits', no_limits_name]]
-package_dict["A50S_6S"] = [['a50s_6s', default_name]]
-package_dict["A50S_6S_HG"] = [['a50s_6s_hg', default_name]]
-package_dict["A50S_12S"] = [['a50s_12s', default_name]]
-package_dict["A50S_12S_HG"] = [['a50s_12s_hg', default_name]]
+package_dict["A50S_6S"] = [['a50s_v22_6s', default_name]]
+package_dict["A50S_6S_HG"] = [['a50s_v22_6s_hg', default_name]]
+package_dict["A50S_12S"] = [['a50s_v22_12s', default_name]]
+package_dict["A50S_12S_HG"] = [['a50s_v22_12s_hg', default_name]]
+package_dict["A50S_V23_6S"] = [['a50s_v23_6s', default_name]]
+package_dict["A50S_V23_12S"] = [['a50s_v23_12s', default_name]]
+package_dict["A50S_V23_20S"] = [['a50s_v23_20s', default_name]]
 package_dict["A200S_V2.1"] = [['a200s_v2.1', default_name]]
 package_dict["A200S_V2.2"] = [['a200s_v2.2', default_name]]
 package_dict["A200S_V3"] = [['a200s_v3', default_name]]
@@ -130,6 +134,7 @@ package_dict["75_100"] = [['75_100', default_name],
 package_dict["75_100_V2"] = [['75_100_V2', default_name],
                     ['75_100_V2_no_limits', no_limits_name],
                     ['75_100_V2_0005ohm', 'VESC_0005ohm.bin']]
+package_dict["FSESC75300"] = [['fsesc_75_300', default_name]]
 package_dict["GO_FOC_DV6_PRO"] = [['go_foc_dv6_pro', default_name],
                     ['go_foc_dv6_pro_no_limits', no_limits_name]]
 package_dict["GO_FOC_G300"] = [['go_foc_g300', default_name],

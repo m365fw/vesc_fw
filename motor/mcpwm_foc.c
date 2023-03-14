@@ -947,6 +947,17 @@ void mcpwm_foc_get_voltage_offsets_undriven(
 	*v2_offset = motor->m_conf->foc_offsets_voltage_undriven[2];
 }
 
+void mcpwm_foc_get_currents_adc(
+		float *ph0,
+		float *ph1,
+		float *ph2,
+		bool is_second_motor) {
+	volatile motor_all_state_t *motor = M_MOTOR(is_second_motor);
+	*ph0 = motor->m_currents_adc[0];
+	*ph1 = motor->m_currents_adc[1];
+	*ph2 = motor->m_currents_adc[2];
+}
+
 /**
  * Produce an openloop rotating voltage.
  *
@@ -1393,6 +1404,21 @@ float mcpwm_foc_get_mod_alpha_measured(void) {
 
 float mcpwm_foc_get_mod_beta_measured(void) {
 	return get_motor_now()->m_motor_state.mod_beta_measured;
+}
+
+float mcpwm_foc_get_est_lambda(void) {
+	return get_motor_now()->m_observer_state.lambda_est;
+}
+
+float mcpwm_foc_get_est_res(void) {
+	return get_motor_now()->m_res_est;
+}
+
+// NOTE: Requires the regular HFI sensor mode to run
+float mcpwm_foc_get_est_ind(void) {
+	float real_bin0, imag_bin0;
+	get_motor_now()->m_hfi.fft_bin0_func((float*)get_motor_now()->m_hfi.buffer, &real_bin0, &imag_bin0);
+	return real_bin0;
 }
 
 /**
@@ -2493,7 +2519,7 @@ void mcpwm_foc_print_state(void) {
 	commands_printf("i_abs_flt: %.2f", (double)get_motor_now()->m_motor_state.i_abs_filter);
 	commands_printf("Obs_x1:    %.2f", (double)get_motor_now()->m_observer_state.x1);
 	commands_printf("Obs_x2:    %.2f", (double)get_motor_now()->m_observer_state.x2);
-	commands_printf("lambda_est:%.2f", (double)get_motor_now()->m_observer_state.lambda_est);
+	commands_printf("lambda_est:%.4f", (double)get_motor_now()->m_observer_state.lambda_est);
 	commands_printf("vd_int:    %.2f", (double)get_motor_now()->m_motor_state.vd_int);
 	commands_printf("vq_int:    %.2f", (double)get_motor_now()->m_motor_state.vq_int);
 	commands_printf("off_delay: %.2f", (double)get_motor_now()->m_current_off_delay);
@@ -2560,17 +2586,17 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		float curr1;
 
 		if (is_second_motor) {
-			curr0 = ((float)GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-			curr1 = ((float)GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+			curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
+			curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
 			TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 		} else {
-			curr0 = ((float)GET_CURRENT1_M2() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-			curr1 = ((float)GET_CURRENT2_M2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+			curr0 = (GET_CURRENT1_M2() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
+			curr1 = (GET_CURRENT2_M2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
 			TIMER_UPDATE_DUTY_M2(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 		}
 #else
-		float curr0 = ((float)GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-		float curr1 = ((float)GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+		float curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
+		float curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
 
 		TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 #ifdef HW_HAS_DUAL_PARALLEL
@@ -2852,34 +2878,23 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 		if (!control_duty) {
 			motor_now->m_duty_i_term = motor_now->m_motor_state.iq / conf_now->lo_current_max;
+			motor_now->duty_was_pi = false;
 		}
 
 		if (control_duty) {
-			float scale = 1.0 / motor_now->m_motor_state.v_bus;
-
 			// Duty cycle control
-			if (fabsf(duty_set) < (duty_abs - (scale * conf_now->foc_motor_r * conf_now->lo_current_max)) ||
-					(SIGN(motor_now->m_motor_state.vq) * motor_now->m_motor_state.iq) < conf_now->lo_current_min) {
-				// Truncating the duty cycle here would be dangerous, so run a PID controller.
+			if (fabsf(duty_set) < (duty_abs - 0.01) &&
+					(!motor_now->duty_was_pi || SIGN(motor_now->duty_pi_duty_last) == SIGN(duty_now))) {
+				// Truncating the duty cycle here would be dangerous, so run a PI controller.
 
-				// Reset the integrator in duty mode to not increase the duty if the load suddenly changes. In braking
-				// mode this would cause a discontinuity, so there we want to keep the value of the integrator.
-				if (motor_now->m_control_mode == CONTROL_MODE_DUTY) {
-					if (duty_now > 0.0) {
-						if (motor_now->m_duty_i_term > 0.0) {
-							motor_now->m_duty_i_term = 0.0;
-						}
-					} else {
-						if (motor_now->m_duty_i_term < 0.0) {
-							motor_now->m_duty_i_term = 0.0;
-						}
-					}
-				}
+				motor_now->duty_pi_duty_last = duty_now;
+				motor_now->duty_was_pi = true;
 
 				// Compute error
 				float error = duty_set - motor_now->m_motor_state.duty_now;
 
 				// Compute parameters
+				float scale = 1.0 / motor_now->m_motor_state.v_bus;
 				float p_term = error * conf_now->foc_duty_dowmramp_kp * scale;
 				motor_now->m_duty_i_term += error * (conf_now->foc_duty_dowmramp_ki * dt) * scale;
 
@@ -2900,6 +2915,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 				} else {
 					iq_set_tmp = -conf_now->lo_current_max;
 				}
+				motor_now->duty_was_pi = false;
 			}
 		} else if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
 			// Braking
@@ -3085,6 +3101,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		motor_now->m_motor_state.iq = 0.0;
 		motor_now->m_motor_state.id_filter = 0.0;
 		motor_now->m_motor_state.iq_filter = 0.0;
+		motor_now->m_duty_i_term = 0.0;
 #ifdef HW_HAS_INPUT_CURRENT_SENSOR
 		GET_INPUT_CURRENT_OFFSET(); // TODO: should this be done here?
 #endif
@@ -3533,8 +3550,8 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	{
 		float res_est_gain = 0.00002;
 		float i_abs_sq = SQ(motor->m_motor_state.i_abs);
-		motor->m_r_est = motor->m_r_est_state - 0.5 * res_est_gain * conf_now->foc_motor_l * i_abs_sq;
-		float res_dot = -res_est_gain * (motor->m_r_est * i_abs_sq + motor->m_speed_est_fast *
+		motor->m_res_est = motor->m_r_est_state - 0.5 * res_est_gain * conf_now->foc_motor_l * i_abs_sq;
+		float res_dot = -res_est_gain * (motor->m_res_est * i_abs_sq + motor->m_speed_est_fast *
 				(motor->m_motor_state.i_beta * motor->m_observer_state.x1 - motor->m_motor_state.i_alpha * motor->m_observer_state.x2) -
 				(motor->m_motor_state.i_alpha * motor->m_motor_state.v_alpha + motor->m_motor_state.i_beta * motor->m_motor_state.v_beta));
 		motor->m_r_est_state += res_dot * dt;
@@ -3565,7 +3582,7 @@ static void terminal_tmp(int argc, const char **argv) {
 	}
 
 	for (int i = 0;i < top;i++) {
-		float res_est = m_motor_1.m_r_est;
+		float res_est = m_motor_1.m_res_est;
 		float t_base = m_motor_1.m_conf->foc_temp_comp_base_temp;
 		float res_base = m_motor_1.m_conf->foc_motor_r;
 		float t_est = (res_est / res_base - 1) / 0.00386 + t_base;

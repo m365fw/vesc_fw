@@ -94,11 +94,11 @@ lbm_value lbm_enc_i64(int64_t x) {
 lbm_value lbm_enc_u64(uint64_t x) {
 #ifndef LBM64
   lbm_value res = lbm_enc_sym(SYM_MERROR);
-  lbm_uint* storage = lbm_memory_allocate(2);
+  uint8_t* storage = lbm_malloc(sizeof(uint64_t));
   if (storage) {
     res = lbm_cons((lbm_uint)storage, lbm_enc_sym(SYM_IND_U_TYPE));
     if (lbm_type_of(res) != LBM_TYPE_SYMBOL) {
-      memcpy(storage,&x, 8);
+      memcpy(storage,&x, sizeof(uint64_t));
       res = lbm_set_ptr_type(res, LBM_TYPE_U64);
     }
   }
@@ -188,11 +188,10 @@ char *lbm_dec_str(lbm_value val) {
   char *res = 0;
   if (lbm_type_of(val) == LBM_TYPE_ARRAY) {
     lbm_array_header_t *array = (lbm_array_header_t *)lbm_car(val);
-    if (array == NULL) {
-      return NULL;
-    }
-    if (array->elt_type == LBM_TYPE_CHAR) {
-      res = (char *)array->data;
+    if (array) {
+      if (array->elt_type == LBM_TYPE_CHAR) {
+        res = (char *)array->data;
+      }
     }
   }
   return res;
@@ -517,38 +516,92 @@ lbm_value lbm_heap_allocate_cell(lbm_type ptr_type) {
 
   lbm_value res;
 
-  if (!lbm_is_ptr(lbm_heap_state.freelist)) {
-    // Free list not a ptr (should be Symbol NIL)
-    if ((lbm_type_of(lbm_heap_state.freelist) == LBM_TYPE_SYMBOL) &&
-        (lbm_dec_sym(lbm_heap_state.freelist) == SYM_NIL)) {
-      // all is as it should be (but no free cells)
-      return ENC_SYM_MERROR;
-    } else {
-      // something is most likely very wrong
-      return ENC_SYM_FATAL_ERROR;
-    }
-  }
-
   // it is a ptr replace freelist with cdr of freelist;
   res = lbm_heap_state.freelist;
 
-  if (lbm_type_of(res) != LBM_TYPE_CONS) {
+  if (lbm_type_of(res) == LBM_TYPE_CONS) {
+    lbm_heap_state.freelist = lbm_cdr(lbm_heap_state.freelist);
+
+    lbm_heap_state.num_alloc++;
+
+    // set some ok initial values (nil . nil)
+    lbm_ref_cell(res)->car = ENC_SYM_NIL;
+    lbm_ref_cell(res)->cdr = ENC_SYM_NIL;
+
+    res = res | ptr_type;
+    return res;
+  }
+  else if ((lbm_type_of(lbm_heap_state.freelist) == LBM_TYPE_SYMBOL) &&
+           (lbm_dec_sym(lbm_heap_state.freelist) == SYM_NIL)) {
+    // all is as it should be (but no free cells)
+    return ENC_SYM_MERROR;
+  }
+  else {
     return ENC_SYM_FATAL_ERROR;
   }
+}
 
-  lbm_heap_state.freelist = lbm_cdr(lbm_heap_state.freelist);
+lbm_value lbm_heap_allocate_list(unsigned int n) {
+  if (n == 0) return ENC_SYM_NIL;
+  if (lbm_heap_num_free() < n) return ENC_SYM_MERROR;
 
-  lbm_heap_state.num_alloc++;
+  lbm_value res = lbm_heap_state.freelist;
+  if (lbm_type_of(res) == LBM_TYPE_CONS) {
 
-  // set some ok initial values (nil . nil)
-  lbm_ref_cell(res)->car = ENC_SYM_NIL;
-  lbm_ref_cell(res)->cdr = ENC_SYM_NIL;
+    lbm_value curr = res;
+    unsigned int count = 1;
+    while (lbm_type_of(curr) == LBM_TYPE_CONS && count < n) {
+      lbm_ref_cell(curr)->car = ENC_SYM_NIL;
+      curr = lbm_cdr(curr);
+      count ++;
+    }
+    lbm_set_car(curr, ENC_SYM_NIL);
+    lbm_heap_state.freelist = lbm_cdr(curr);
+    lbm_set_cdr(curr, ENC_SYM_NIL);
+    lbm_heap_state.num_alloc+=count;
+    return res;
+  } else {
+    return ENC_SYM_FATAL_ERROR;
+  }
+}
 
-  // clear GC bit on allocated cell
-  clr_gc_mark(lbm_ref_cell(res));
+bool lbm_heap_allocate_list_init_va(lbm_value *ls, unsigned int n, va_list valist) {
+  if (n == 0) {
+    *ls = ENC_SYM_NIL;
+    return true;
+  }
+  if (lbm_heap_num_free() < n) {
+    *ls = ENC_SYM_MERROR;
+    return false;
+  }
 
-  res = res | ptr_type;
-  return res;
+  lbm_value res = lbm_heap_state.freelist;
+  if (lbm_type_of(res) == LBM_TYPE_CONS) {
+
+    lbm_value curr = res;
+    unsigned int count = 1;
+    while (lbm_type_of(curr) == LBM_TYPE_CONS && count < n) {
+      lbm_ref_cell(curr)->car = va_arg(valist, lbm_value);
+      curr = lbm_cdr(curr);
+      count ++;
+    }
+    lbm_set_car(curr, va_arg(valist, lbm_value));
+    lbm_heap_state.freelist = lbm_cdr(curr);
+    lbm_set_cdr(curr, ENC_SYM_NIL);
+    lbm_heap_state.num_alloc+=count;
+    va_end(valist);
+    *ls = res;
+    return true;
+  }
+  return false;
+}
+
+bool lbm_heap_allocate_list_init(lbm_value *ls, unsigned int n, ...) {
+    va_list valist;
+    va_start(valist, n);
+    bool r = lbm_heap_allocate_list_init_va(ls, n, valist);
+    va_end(valist);
+    return r;
 }
 
 lbm_uint lbm_heap_num_allocated(void) {
@@ -705,7 +758,7 @@ int lbm_gc_sweep_phase(void) {
         default:
           break;
         }
-        }
+      }
       // create pointer to use as new freelist
       lbm_uint addr = lbm_enc_cons_ptr(i);
 
@@ -717,6 +770,7 @@ int lbm_gc_sweep_phase(void) {
       lbm_heap_state.gc_recovered ++;
     }
   }
+
   return 1;
 }
 
@@ -837,6 +891,21 @@ unsigned int lbm_list_length(lbm_value c) {
     len ++;
     c = lbm_cdr(c);
   }
+  return len;
+}
+
+/* calculate the length of a list and check that each element
+   fullfills the predicate pred */
+unsigned int lbm_list_length_pred(lbm_value c, bool *pres, bool (*pred)(lbm_value)) {
+  bool res = true;
+  unsigned int len = 0;
+
+  while (lbm_type_of(c) == LBM_TYPE_CONS){
+    len ++;
+    res = res && pred(lbm_car(c));
+    c = lbm_cdr(c);
+  }
+  *pres = res;
   return len;
 }
 
@@ -986,6 +1055,33 @@ int lbm_heap_allocate_array(lbm_value *res, lbm_uint size, lbm_type type){
   return 1;
 }
 
+// Convert a C array into an lbm_array.
+// if the array is in LBM_MEMORY, the lifetime will be managed by the GC.
+int lbm_lift_array(lbm_value *value, char *data, lbm_type type, lbm_uint num_elt) {
+
+  lbm_array_header_t *array = NULL;
+  lbm_value cell  = lbm_heap_allocate_cell(LBM_TYPE_CONS);
+
+  if (lbm_type_of(cell) == LBM_TYPE_SYMBOL) { // Out of heap memory
+    *value = cell;
+    return 0;
+  }
+
+  array = (lbm_array_header_t*)lbm_malloc(sizeof(lbm_array_header_t));
+
+  if (array == NULL) return 0;
+
+  array->data = (lbm_uint*)data;
+  array->elt_type = type;
+  array->size = num_elt;
+
+  lbm_set_car(cell, (lbm_uint)array);
+  lbm_set_cdr(cell, lbm_enc_sym(SYM_ARRAY_TYPE));
+
+  cell = lbm_set_ptr_type(cell, LBM_TYPE_ARRAY);
+  *value = cell;
+  return 1;
+}
 
 /* Explicitly freeing an array.
 
@@ -1023,4 +1119,33 @@ int lbm_heap_explicit_free_array(lbm_value arr) {
   }
 
   return r;
+}
+
+lbm_uint lbm_size_of(lbm_type t) {
+  lbm_uint s = 0;
+  switch(t) {
+  case LBM_TYPE_BYTE:
+    s = 1;
+    break;
+  case LBM_TYPE_I: /* fall through */
+  case LBM_TYPE_U:
+  case LBM_TYPE_SYMBOL:
+#ifndef LBM64
+    s = 4;
+#else
+    s = 8;
+#endif
+    break;
+  case LBM_TYPE_I32: /* fall through */
+  case LBM_TYPE_U32:
+  case LBM_TYPE_FLOAT:
+    s = 4;
+    break;
+  case LBM_TYPE_I64: /* fall through */
+  case LBM_TYPE_U64:
+  case LBM_TYPE_DOUBLE:
+    s = 8;
+    break;
+  }
+  return s;
 }

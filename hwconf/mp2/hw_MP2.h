@@ -23,14 +23,14 @@
 #define HW_MP2_
 
 //Preliminary conf file for ***V0.3*** MP2/F405 pill
-#define HW_NAME					"MP2"
+#define HW_NAME					"MP2_NO_BRK"
 
 
 // HW properties
 #define HW_HAS_3_SHUNTS
 #define INVERTED_SHUNT_POLARITY
 #define HW_HAS_PHASE_FILTERS
-#define HW_USE_BRK
+//#define HW_USE_BRK
 
 
 // Macros
@@ -49,8 +49,8 @@
 #define PHASE_FILTER_OFF()			palSetPad(GPIOC, 13); palSetPad(GPIOC, 14); palSetPad(GPIOC, 15)
 #define PHASE_FILTER_ON()			palClearPad(GPIOC, 13); palClearPad(GPIOC, 14); palClearPad(GPIOC, 15)
 
-#define BRK_GPIO				GPIOB
-#define BRK_PIN					12
+//#define BRK_GPIO				GPIOB
+//#define BRK_PIN					12
 
 
 /*

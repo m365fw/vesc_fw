@@ -62,7 +62,6 @@ void app_set_configuration(app_configuration *conf) {
 		app_adc_stop();
 		app_uartcomm_stop(UART_PORT_COMM_HEADER);
 		app_nunchuk_stop();
-		app_balance_stop();
 		app_pas_stop();
 
 #ifdef APP_CUSTOM_TO_USE
@@ -79,9 +78,6 @@ void app_set_configuration(app_configuration *conf) {
 #endif
 
 	imu_init(&conf->imu_conf);
-
-	// Configure balance app before starting it.
-	app_balance_configure(&appconf.app_balance_conf, &appconf.imu_conf);
 
 	if (app_changed) {
 		if (appconf.app_to_use != APP_PPM &&
@@ -121,14 +117,6 @@ void app_set_configuration(app_configuration *conf) {
 
 		case APP_NUNCHUK:
 			app_nunchuk_start();
-			break;
-
-		case APP_BALANCE:
-			app_balance_start();
-			if(appconf.imu_conf.type == IMU_TYPE_INTERNAL){
-				hw_stop_i2c();
-				app_uartcomm_start(UART_PORT_COMM_HEADER);
-			}
 			break;
 
 		case APP_PAS:
@@ -217,13 +205,14 @@ static void output_vt_cb(void *arg) {
  * @return
  * CRC16 (with crc field in struct temporarily set to zero).
  */
-unsigned app_calc_crc(app_configuration* conf) {
-	if(NULL == conf)
+unsigned short app_calc_crc(app_configuration* conf) {
+	if (NULL == conf) {
 		conf = &appconf;
+	}
 
-	unsigned crc_old = conf->crc;
+	unsigned short crc_old = conf->crc;
 	conf->crc = 0;
-	unsigned crc_new = crc16((uint8_t*)conf, sizeof(app_configuration));
+	unsigned short crc_new = crc16((uint8_t*)conf, sizeof(app_configuration));
 	conf->crc = crc_old;
 	return crc_new;
 }

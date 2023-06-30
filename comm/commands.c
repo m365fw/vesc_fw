@@ -549,8 +549,6 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			mcconf->lo_current_min = mcconf->l_current_min * mcconf->l_current_min_scale;
 			mcconf->lo_in_current_max = mcconf->l_in_current_max;
 			mcconf->lo_in_current_min = mcconf->l_in_current_min;
-			mcconf->lo_current_motor_max_now = mcconf->lo_current_max;
-			mcconf->lo_current_motor_min_now = mcconf->lo_current_min;
 
 			commands_apply_mcconf_hw_limits(mcconf);
 			conf_general_store_mc_configuration(mcconf, mc_interface_get_motor_thread() == 2);
@@ -706,24 +704,6 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		uint8_t send_buffer[50];
 		send_buffer[ind++] = COMM_GET_DECODED_CHUK;
 		buffer_append_int32(send_buffer, (int32_t)(app_nunchuk_get_decoded_y() * 1000000.0), &ind);
-		reply_func(send_buffer, ind);
-	} break;
-
-	case COMM_GET_DECODED_BALANCE: {
-		int32_t ind = 0;
-		uint8_t send_buffer[50];
-		send_buffer[ind++] = COMM_GET_DECODED_BALANCE;
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_pid_output() * 1000000.0), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_pitch_angle() * 1000000.0), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_roll_angle() * 1000000.0), &ind);
-		buffer_append_uint32(send_buffer, app_balance_get_diff_time(), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_motor_current() * 1000000.0), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_debug1() * 1000000.0), &ind);
-		buffer_append_uint16(send_buffer, app_balance_get_state(), &ind);
-		buffer_append_uint16(send_buffer, app_balance_get_switch_state(), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_adc1() * 1000000.0), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_adc2() * 1000000.0), &ind);
-		buffer_append_int32(send_buffer, (int32_t)(app_balance_get_debug2() * 1000000.0), &ind);
 		reply_func(send_buffer, ind);
 	} break;
 
@@ -1010,8 +990,6 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 
 		mcconf->lo_current_min = mcconf->l_current_min * mcconf->l_current_min_scale;
 		mcconf->lo_current_max = mcconf->l_current_max * mcconf->l_current_max_scale;
-		mcconf->lo_current_motor_min_now = mcconf->lo_current_min;
-		mcconf->lo_current_motor_max_now = mcconf->lo_current_max;
 		mcconf->lo_in_current_min = mcconf->l_in_current_min;
 		mcconf->lo_in_current_max = mcconf->l_in_current_max;
 
@@ -1873,6 +1851,8 @@ void commands_apply_mcconf_hw_limits(mc_configuration *mcconf) {
     } else {
     	utils_truncate_number_int(&mcconf->m_hall_extra_samples, 0, 10);
     }
+
+    utils_truncate_number_abs(&mcconf->foc_sl_erpm_start, mcconf->foc_sl_erpm * 0.9);
 
 #ifndef DISABLE_HW_LIMITS
 

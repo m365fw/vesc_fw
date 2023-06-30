@@ -86,6 +86,7 @@ typedef struct {
 	float m_input_voltage_filtered;
 	float m_input_voltage_filtered_slower;
 	float m_temp_override;
+	float m_i_in_filter;
 
 	// Backup data counters
 	uint64_t m_odometer_last;
@@ -715,7 +716,7 @@ void mc_interface_set_current_rel(float val) {
 		SHUTDOWN_RESET();
 	}
 
-	mc_interface_set_current(val * motor_now()->m_conf.lo_current_motor_max_now);
+	mc_interface_set_current(val * motor_now()->m_conf.lo_current_max);
 }
 
 /**
@@ -729,7 +730,7 @@ void mc_interface_set_brake_current_rel(float val) {
 		SHUTDOWN_RESET();
 	}
 
-	mc_interface_set_brake_current(val * fabsf(motor_now()->m_conf.lo_current_motor_min_now));
+	mc_interface_set_brake_current(val * fabsf(motor_now()->m_conf.lo_current_min));
 }
 
 /**
@@ -776,7 +777,7 @@ void mc_interface_set_handbrake_rel(float val) {
 		SHUTDOWN_RESET();
 	}
 
-	mc_interface_set_handbrake(val * fabsf(motor_now()->m_conf.lo_current_motor_min_now));
+	mc_interface_set_handbrake(val * fabsf(motor_now()->m_conf.lo_current_min));
 }
 
 void mc_interface_set_openloop_current(float current, float rpm) {
@@ -1904,6 +1905,9 @@ void mc_interface_mc_timer_isr(bool is_second_motor) {
 		abs_current_filtered = current_filtered;
 	}
 
+	// Additional input current filter for the mapped current limit
+	UTILS_LP_FAST(motor->m_i_in_filter, current_in_filtered, motor->m_conf.l_in_current_map_filter);
+
 	if (state == MC_STATE_RUNNING) {
 		motor->m_cycles_running++;
 	} else {
@@ -2393,26 +2397,7 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 				conf->l_max_duty, l_current_max_tmp, conf->cc_min_current * 5.0);
 	}
 
-	float lo_max = utils_min_abs(lo_max_mos, lo_max_mot);
-	float lo_min = utils_min_abs(lo_min_mos, lo_min_mot);
-
-	lo_max = utils_min_abs(lo_max, lo_max_rpm);
-	lo_max = utils_min_abs(lo_max, lo_min_rpm);
-	lo_max = utils_min_abs(lo_max, lo_max_curr_dec);
-	lo_max = utils_min_abs(lo_max, lo_fet_temp_accel);
-	lo_max = utils_min_abs(lo_max, lo_motor_temp_accel);
-	lo_max = utils_min_abs(lo_max, lo_max_duty);
-
-	if (lo_max < conf->cc_min_current) {
-		lo_max = conf->cc_min_current;
-	}
-
-	if (lo_min > -conf->cc_min_current) {
-		lo_min = -conf->cc_min_current;
-	}
-
-	conf->lo_current_max = lo_max;
-	conf->lo_current_min = lo_min;
+	// Input current limits
 
 	// Battery cutoff
 	float lo_in_max_batt = 0.0;
@@ -2425,12 +2410,23 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 				conf->l_battery_cut_end, conf->l_in_current_max, 0.0);
 	}
 
+	// Regen overvoltage cutoff
+	float lo_in_min_batt = 0.0;
+	if (v_in < (conf->l_battery_regen_cut_start + 0.1)) {
+		lo_in_min_batt = conf->l_in_current_min;
+	} else if (v_in > (conf->l_battery_regen_cut_end - 0.1)) {
+		lo_in_min_batt = 0.0;
+	} else {
+		lo_in_min_batt = utils_map(v_in, conf->l_battery_regen_cut_start,
+				conf->l_battery_regen_cut_end, conf->l_in_current_min, 0.0);
+	}
+
 	// Wattage limits
 	const float lo_in_max_watt = conf->l_watt_max / v_in;
 	const float lo_in_min_watt = conf->l_watt_min / v_in;
 
 	float lo_in_max = utils_min_abs(lo_in_max_watt, lo_in_max_batt);
-	float lo_in_min = lo_in_min_watt;
+	float lo_in_min = utils_min_abs(lo_in_min_watt, lo_in_min_batt);
 
 	// BMS limits
 	bms_update_limits(&lo_in_min,  &lo_in_max, conf->l_in_current_min, conf->l_in_current_max);
@@ -2438,26 +2434,45 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 	conf->lo_in_current_max = utils_min_abs(conf->l_in_current_max, lo_in_max);
 	conf->lo_in_current_min = utils_min_abs(conf->l_in_current_min, lo_in_min);
 
-	// Maximum current right now
-//	float duty_abs = fabsf(mc_interface_get_duty_cycle_now());
-//
-//	// TODO: This is not an elegant solution.
-//	if (m_conf.motor_type == MOTOR_TYPE_FOC) {
-//		duty_abs *= SQRT3_BY_2;
-//	}
-//
-//	if (duty_abs > 0.001) {
-//		conf->lo_current_motor_max_now = utils_min_abs(conf->lo_current_max, conf->lo_in_current_max / duty_abs);
-//		conf->lo_current_motor_min_now = utils_min_abs(conf->lo_current_min, conf->lo_in_current_min / duty_abs);
-//	} else {
-//		conf->lo_current_motor_max_now = conf->lo_current_max;
-//		conf->lo_current_motor_min_now = conf->lo_current_min;
-//	}
+	// Limit iq based on the input current. The input current depends on id and iq combined, but id is determined
+	// from iq based on MTPA and field weakening, which makes it tricky to limit them together in the fast
+	// current loop. For now that is done here. Note that iq is updated recursively depending on the resulting
+	// input current from id and iq.
 
-	// Note: The above code should work, but many people have reported issues with it. Leaving it
-	// disabled for now until I have done more investigation.
-	conf->lo_current_motor_max_now = conf->lo_current_max;
-	conf->lo_current_motor_min_now = conf->lo_current_min;
+	float lo_max_i_in = l_current_max_tmp;
+	if (motor->m_i_in_filter > 0.0 && conf->l_in_current_map_start < 0.98) {
+		float frac = motor->m_i_in_filter / conf->lo_in_current_max;
+		if (frac > conf->l_in_current_map_start) {
+			lo_max_i_in = utils_map(frac, conf->l_in_current_map_start,
+					1.0, l_current_max_tmp, 0.0);
+		}
+
+		if (lo_max_i_in < 0.0) {
+			lo_max_i_in = 0.0;
+		}
+	}
+
+	float lo_max = utils_min_abs(lo_max_mos, lo_max_mot);
+	float lo_min = utils_min_abs(lo_min_mos, lo_min_mot);
+
+	lo_max = utils_min_abs(lo_max, lo_max_rpm);
+	lo_max = utils_min_abs(lo_max, lo_min_rpm);
+	lo_max = utils_min_abs(lo_max, lo_max_curr_dec);
+	lo_max = utils_min_abs(lo_max, lo_fet_temp_accel);
+	lo_max = utils_min_abs(lo_max, lo_motor_temp_accel);
+	lo_max = utils_min_abs(lo_max, lo_max_duty);
+	lo_max = utils_min_abs(lo_max, lo_max_i_in);
+
+	if (lo_max < conf->cc_min_current) {
+		lo_max = conf->cc_min_current;
+	}
+
+	if (lo_min > -conf->cc_min_current) {
+		lo_min = -conf->cc_min_current;
+	}
+
+	conf->lo_current_max = lo_max;
+	conf->lo_current_min = lo_min;
 }
 
 static volatile motor_if_state_t *motor_now(void) {
@@ -2962,7 +2977,7 @@ static THD_FUNCTION(fault_stop_thread, arg) {
 unsigned mc_interface_calc_crc(mc_configuration* conf_in, bool is_motor_2) {
 	volatile mc_configuration* conf = conf_in;
 
-	if(conf == NULL) {
+	if (conf == NULL) {
 		if(is_motor_2) {
 #ifdef HW_HAS_DUAL_MOTORS
 			conf = &(m_motor_2.m_conf);

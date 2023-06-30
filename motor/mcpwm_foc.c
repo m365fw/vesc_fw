@@ -2890,6 +2890,20 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 				motor_now->duty_pi_duty_last = duty_now;
 				motor_now->duty_was_pi = true;
 
+				// Reset the integrator in duty mode to not increase the duty if the load suddenly changes. In braking
+				// mode this would cause a discontinuity, so there we want to keep the value of the integrator.
+				if (motor_now->m_control_mode == CONTROL_MODE_DUTY) {
+					if (duty_now > 0.0) {
+						if (motor_now->m_duty_i_term > 0.0) {
+							motor_now->m_duty_i_term = 0.0;
+						}
+					} else {
+						if (motor_now->m_duty_i_term < 0.0) {
+							motor_now->m_duty_i_term = 0.0;
+						}
+					}
+				}
+
 				// Compute error
 				float error = duty_set - motor_now->m_motor_state.duty_now;
 
@@ -3070,7 +3084,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		iq_set_tmp -= SIGN(mod_q) * motor_now->m_i_fw_set * conf_now->foc_fw_q_current_factor;
 
 		// Apply current limits
-		// TODO: Consider D axis current for the input current as well.
+		// TODO: Consider D axis current for the input current as well. Currently this is done using
+		// l_in_current_map_start in update_override_limits.
 		if (mod_q > 0.001) {
 			utils_truncate_number(&iq_set_tmp, conf_now->lo_in_current_min / mod_q, conf_now->lo_in_current_max / mod_q);
 		} else if (mod_q < -0.001) {

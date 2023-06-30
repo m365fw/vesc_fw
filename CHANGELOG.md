@@ -1,3 +1,26 @@
+### 6.05
+#### TBD
+* LispBM:
+	* Support for var in progn.
+	* Support for curly brackets instead of progn.
+	* Added set and setq.
+	* Added defunret.
+	* Added support for detaching only one of the ADCs.
+	* Added set-encoder.
+	* Support for moving code and data to flash.
+	* Incremental read of uploaded code.
+	* Removed array types other than byte arrays.
+	* Added more position extensions.
+	* Use timeout when app_adc is detached.
+	* Added extension conf-restore-mc.
+	* Added extension conf-restore-app.
+	* Added extension conf-dc-cal.
+	* Added access to several config parameters.
+* Hall sensors: smooth transition to sensorless.
+* Added soft regen cutoff. See https://github.com/vedderb/vesc_tool/pull/310
+* Attempt at limiting the input current when using MTPA and field weakening.
+* Removed built-in balance app. The balance-package can be used instead, which is where new development is done.
+
 ### 6.02
 #### 2023-03-12
 * LispBM:

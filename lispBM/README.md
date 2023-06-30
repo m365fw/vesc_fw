@@ -102,34 +102,6 @@ Get the age of the last PPM update in seconds. Can be used to determine if there
 
 ---
 
-#### get-encoder
-
-| Platforms | Firmware |
-|---|---|
-| ESC | 6.00+ |
-
-```clj
-(get-encoder)
-```
-
-Get angle from selected encoder in degrees.
-
----
-
-#### get-encoder-error-rate
-
-| Platforms | Firmware |
-|---|---|
-| ESC | 6.00+ |
-
-```clj
-(get-encoder-error-rate)
-```
-
-Returns the error rate for the selected encoder, range 0.0 to 1.0. If the selected encoder does not provide any error rate -1.0 is returned. If the selected encoder has multiple error rates the highest one is returned.
-
----
-
 #### set-servo
 
 | Platforms | Firmware |
@@ -635,10 +607,15 @@ Several app-inputs can be detached from the external interfaces and overridden f
 ;        - 1 ADC1/2
 ;        - 2 Buttons
 ;        - 3 ADC1/2 + Buttons
-; state : Only when mode 1/2/3/4 - 1 detaches periperial from APP, 0 attaches peripherial to APP 
+; state : Only used when mode is not 0. State 1, 2 or 3 detaches the peripheral and
+;         state 0 attaches peripheral. For the ADC, 1 means detach both ADCs, 2 means
+;         detach ADC1 only and 3 means detach ADC2 only. For the buttons state
+;         1, 2 and 3 mean the same thing, namely detach.
 ```
 
 Detaches a peripherial from the APP ADC
+
+**Note:** Since firmware 6.05 the ADC-app will no longer reset the timeout by itself when detached. That means that the override-commands have to be sent at a rate higher than the timeout for the output to stay enabled. This is a safety feature that prevents the motor from running after the timeout time if e.g. your script crashes.
 
 ---
 
@@ -651,7 +628,7 @@ Detaches a peripherial from the APP ADC
 ```clj
 (app-adc-override mode value)
 ; Where
-; mode : Select periperial to override
+; mode : Select peripheral to override
 ;        - 0 ADC1
 ;        - 1 ADC2
 ;        - 2 Reverse button
@@ -917,6 +894,9 @@ Use the motor to play a beep sound at frequency freq for time seconds using volt
 
 ### Motor Get Commands
 
+**Note**  
+If the optional optFilter-argument is 1 in the commands below the result will be the average since that function was called the last time. That is also how the plots are filtered in VESC Tool. Polling realtime data in VESC Tool at the same time will affect the averaging as it uses the same integrator. This function was added in firmware 6.05.
+
 ---
 
 #### get-current
@@ -926,7 +906,7 @@ Use the motor to play a beep sound at frequency freq for time seconds using volt
 | ESC | 6.00+ |
 
 ```clj
-(get-current)
+(get-current optFilter)
 ```
 
 Get motor current. Positive means that current is flowing into the motor and negative means that current is flowing out of the motor (regenerative braking).
@@ -954,7 +934,7 @@ Get directional current. Positive for torque in the forward direction and negati
 | ESC | 6.00+ |
 
 ```clj
-(get-current-in)
+(get-current-in optFilter)
 ```
 
 ---
@@ -966,7 +946,7 @@ Get directional current. Positive for torque in the forward direction and negati
 | ESC | 6.00+ |
 
 ```clj
-(get-id)
+(get-id optFilter)
 ```
 
 Get FOC d-axis current.
@@ -980,7 +960,7 @@ Get FOC d-axis current.
 | ESC | 6.00+ |
 
 ```clj
-(get-iq)
+(get-iq optFilter)
 ```
 
 Get FOC q-axis current.
@@ -994,7 +974,7 @@ Get FOC q-axis current.
 | ESC | 6.00+ |
 
 ```clj
-(get-vd)
+(get-vd optFilter)
 ```
 
 Get FOC d-axis voltage.
@@ -1008,7 +988,7 @@ Get FOC d-axis voltage.
 | ESC | 6.00+ |
 
 ```clj
-(get-vq)
+(get-vq optFilter)
 ```
 
 Get FOC q-axis voltage.
@@ -1250,6 +1230,154 @@ Get the number of amp hours charged since start.
 ```
 
 Get the number of watt hours charged since start.
+
+---
+
+### Positions
+
+There are several position sources and many ways to interpret them. The following extensions can be used to get most interpretations of most position sources.
+
+---
+
+#### get-encoder
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.00+ |
+
+```clj
+(get-encoder)
+```
+
+Get angle from selected encoder in degrees.
+
+---
+
+#### set-encoder
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(set-encoder degrees)
+```
+
+Set the encoder position in degrees. This command only has an effect in the ABI and custom encoder modes. In ABI mode the encoder position is updated and the index is set to found. In custom encoder mode the encoder position is updated (unless a native library provides custom encoder support).
+
+When using an ABI-encoder this is useful if a position can be derived before the index pulse is found.
+
+---
+
+#### get-encoder-error-rate
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.00+ |
+
+```clj
+(get-encoder-error-rate)
+```
+
+Returns the error rate for the selected encoder, range 0.0 to 1.0. If the selected encoder does not provide any error rate -1.0 is returned. If the selected encoder has multiple error rates the highest one is returned.
+
+---
+
+#### pos-pid-now
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(pos-pid-now)
+```
+
+Returns the current position of the PID-controller, including compensation for the angle division and offset. Unit: Degrees.
+
+---
+
+#### pos-pid-set
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(pos-pid-set)
+```
+
+Returns the set position of the PID-controller, including compensation for the angle division and offset. Unit: Degrees.
+
+---
+
+#### pos-pid-error
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(pos-pid-error)
+```
+
+Returns the difference between the current and the set PID position. Unit: Degrees.
+
+---
+
+#### phase-motor
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(phase-motor)
+```
+
+Returns the electrical position of the motor that is used for FOC now. Unit: Degrees.
+
+---
+
+#### phase-encoder
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(phase-encoder)
+```
+
+Returns the encoder position mapped to the electrical position of the motor. Unit: Degrees.
+
+---
+
+#### phase-observer
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(phase-observer)
+```
+
+Returns the FOC observer position. Unit: Degrees.
+
+---
+
+#### observer-error
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(observer-error)
+```
+
+Returns the difference between the observer position and the encoder position mapped to the electrical position of the motor. Unit: Degrees.
 
 ---
 
@@ -2443,7 +2571,7 @@ Start input capture on the PPM-pin with timer frequency freqHz hertz and polarit
 (icu-width)
 ```
 
-Get the width of the last captured pulse.
+Get the width of the last captured pulse. The unit is timer ticks, which depends on the freqHz you pick when running icu-start. E.g. if freqHz is 1000000 (1 MHz) the unit will be one microsecond.
 
 ---
 
@@ -2457,7 +2585,7 @@ Get the width of the last captured pulse.
 (icu-period)
 ```
 
-Get the period of the last captured pulse.
+Get the period of the last captured pulse. The unit is timer ticks, which depends on the freqHz you pick when running icu-start. E.g. if freqHz is 1000000 (1 MHz) the unit will be one microsecond.
 
 ---
 
@@ -2481,6 +2609,11 @@ The following selection of app and motor parameters can be read and set from Lis
 'l-min-duty             ; Minimum duty cycle
 'l-max-duty             ; Maximum duty cycle
 'l-watt-min             ; Minimum power regen in W (a negative value)
+'l-battery-cut-start    ; The voltage where current starts to get reduced
+'l-battery-cut-end      ; The voltage below which current draw is not allowed
+'l-temp-motor-start     ; Temperature where motor current starts to get reduced
+'l-temp-motor-end       ; Temperature above which motor current is not allowed
+'l-temp-accel-dec       ; Decrease temp limits this much during acceleration
 'motor-type             ; Motor Type
                         ;    0: BLDC (6-step commutation)
                         ;    1: DC (DC motor on phase A and C)
@@ -2512,6 +2645,7 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    6: FOC_SENSOR_MODE_HFI_V3
                         ;    7: FOC_SENSOR_MODE_HFI_V4
                         ;    8: FOC_SENSOR_MODE_HFI_V5
+'m-ntc-motor-beta       ; Beta Value for Motor Thermistor
 'si-motor-poles         ; Number of motor poles, must be multiple of 2
 'foc-current-kp         ; FOC current controller KP
 'foc-current-ki         ; FOC current controller KI
@@ -2524,6 +2658,13 @@ The following selection of app and motor parameters can be read and set from Lis
 'foc-hfi-voltage-run    ; HFI voltage (V) HFI voltage at min current
 'foc-hfi-voltage-max    ; HFI voltage (V) at max current
 'foc-sl-erpm-hfi        ; ERPM where to move to sensorless in HFI mode
+'foc-openloop-rpm       ; Use openloop commutation below this ERPM
+'foc-openloop-rpm-low   ; Openloop ERPM and minimum current
+'foc-sl-openloop-time-lock ; Locking time at the start of openloop
+'foc-sl-openloop-time-ramp ; Time to ramp up to the openloop speed
+'foc-sl-openloop-time   ; Stay in openloop for this amount of time
+'foc-temp-comp          ; Use observer temperature compensation
+'foc-temp-comp-base-temp ; Temperature at which parameters were measured
 'min-speed              ; Minimum speed in meters per second (a negative value)
 'max-speed              ; Maximum speed in meters per second
 'app-to-use             ; App to use
@@ -2574,6 +2715,7 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    12: ADC_CTRL_TYPE_PID
                         ;    13: ADC_CTRL_TYPE_PID_REV_CENTER
                         ;    14: ADC_CTRL_TYPE_PID_REV_BUTTON
+'pas-current-scaling    ; PAS current scaling (Added in FW 6.05)
 ```
 
 ---
@@ -2722,6 +2864,48 @@ returns: ({ld_lq_avg} {ld_lq_diff} {actual_measurement_current} fault-code)
 Can not be used when the motor is running. The measurement current is not gaurenteed to reach the target, and the actual_measurement_current parameter should be used to verify the actual current used.
 
 Useful for finding the saturation inductance curve of a motor.
+
+---
+
+#### conf-restore-mc
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(conf-restore-mc)
+```
+
+Restore motor configuration to the default values on the selected motor. The current and voltage offsets are kept from the old configuration.
+
+---
+
+#### conf-restore-app
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(conf-restore-app)
+```
+
+Restore app configuration to the default values.
+
+---
+
+#### conf-dc-cal
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(conf-dc-cal calUndriven)
+```
+
+Run FOC DC offset calibration. calUndriven can be set to true for including the undriven voltages in the calibration, which requires that the motor stands still.
 
 ---
 
@@ -2994,6 +3178,36 @@ Shorthand macro for defining a function. Example:
 (define f (lambda (x)
     (print x)
 ))
+```
+
+---
+
+#### defunret
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(defunret (args) body)
+```
+
+Same as defun, but allows returning at any point. This one has a bit more overhead than defun as it uses call-cc internally, which is why both exist.
+
+```clj
+(defunret test (a b) {
+        (if (> a b)
+            (return (+ a 5))
+        )
+        
+        (+ a b)
+})
+
+(test 2 2)
+> 4
+
+(test 3 2)
+> 8
 ```
 
 ---

@@ -1118,7 +1118,7 @@ mc_state mcpwm_foc_get_state_motor(bool is_second_motor) {
  * The RPM value.
  */
 float mcpwm_foc_get_rpm(void) {
-	return RADPS2RPM_f(get_motor_now()->m_motor_state.speed_rad_s);
+	return RADPS2RPM_f(get_motor_now()->m_pll_speed);
 	//	return get_motor_now()->m_speed_est_fast * RADPS2RPM_f;
 }
 
@@ -2312,6 +2312,9 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 	timeout_configure(60000, 0.0, KILL_SW_MODE_DISABLED);
 
 	// Measure driven offsets
+	// NOTE: One phase is measured at a time while the others are left
+	// floating so that no torque is generated in case the motor is spinning
+	// at boot.
 
 	const float samples = 1000.0;
 	float current_sum[3] = {0.0, 0.0, 0.0};
@@ -2871,7 +2874,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 			motor_now->m_motor_state.vq_int = motor_now->m_motor_state.vq;
 			if (conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_BEMF ||
 					conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_CROSS_BEMF) {
-				motor_now->m_motor_state.vq_int -= motor_now->m_motor_state.speed_rad_s * conf_now->foc_motor_flux_linkage;
+				motor_now->m_motor_state.vq_int -= motor_now->m_pll_speed * conf_now->foc_motor_flux_linkage;
 			}
 		}
 		motor_now->m_was_control_duty = control_duty;
@@ -2889,6 +2892,20 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 				motor_now->duty_pi_duty_last = duty_now;
 				motor_now->duty_was_pi = true;
+
+				// Reset the integrator in duty mode to not increase the duty if the load suddenly changes. In braking
+				// mode this would cause a discontinuity, so there we want to keep the value of the integrator.
+				if (motor_now->m_control_mode == CONTROL_MODE_DUTY) {
+					if (duty_now > 0.0) {
+						if (motor_now->m_duty_i_term > 0.0) {
+							motor_now->m_duty_i_term = 0.0;
+						}
+					} else {
+						if (motor_now->m_duty_i_term < 0.0) {
+							motor_now->m_duty_i_term = 0.0;
+						}
+					}
+				}
 
 				// Compute error
 				float error = duty_set - motor_now->m_motor_state.duty_now;
@@ -3070,7 +3087,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		iq_set_tmp -= SIGN(mod_q) * motor_now->m_i_fw_set * conf_now->foc_fw_q_current_factor;
 
 		// Apply current limits
-		// TODO: Consider D axis current for the input current as well.
+		// TODO: Consider D axis current for the input current as well. Currently this is done using
+		// l_in_current_map_start in update_override_limits.
 		if (mod_q > 0.001) {
 			utils_truncate_number(&iq_set_tmp, conf_now->lo_in_current_min / mod_q, conf_now->lo_in_current_max / mod_q);
 		} else if (mod_q < -0.001) {
@@ -3206,7 +3224,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 		if (conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_BEMF ||
 				conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_CROSS_BEMF) {
-			motor_now->m_motor_state.vq_int -= motor_now->m_motor_state.speed_rad_s * conf_now->foc_motor_flux_linkage;
+			motor_now->m_motor_state.vq_int -= motor_now->m_pll_speed * conf_now->foc_motor_flux_linkage;
 		}
 
 		// Update corresponding modulation
@@ -3226,17 +3244,16 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 	float phase_for_speed_est = 0.0;
 	switch (conf_now->foc_speed_soure) {
-	case SPEED_SRC_CORRECTED:
+	case FOC_SPEED_SRC_CORRECTED:
 		phase_for_speed_est = motor_now->m_motor_state.phase;
 		break;
-	case SPEED_SRC_OBSERVER:
+	case FOC_SPEED_SRC_OBSERVER:
 		phase_for_speed_est = motor_now->m_phase_now_observer;
 		break;
 	};
 
 	// Run PLL for speed estimation
 	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, conf_now);
-	motor_now->m_motor_state.speed_rad_s = motor_now->m_pll_speed;
 
 	// Low latency speed estimation, for e.g. HFI and speed control.
 	{
@@ -3706,7 +3723,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 			} else {
 				dt_sw = 1.0 / (motor->m_conf->foc_f_zv / 2.0);
 			}
-			angle_bin_2 += motor->m_motor_state.speed_rad_s * ((float)motor->m_hfi.samples / 2.0) * dt_sw;
+			angle_bin_2 += motor->m_pll_speed * ((float)motor->m_hfi.samples / 2.0) * dt_sw;
 
 			if (fabsf(utils_angle_difference_rad(angle_bin_2 + M_PI, motor->m_hfi.angle)) <
 					fabsf(utils_angle_difference_rad(angle_bin_2, motor->m_hfi.angle))) {
@@ -3768,7 +3785,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 					commands_send_plot_points(motor->m_hfi_plot_sample, real_bin0 * 1e6);
 
 //					commands_plot_set_graph(0);
-//					commands_send_plot_points(motor->m_hfi_plot_sample, motor->m_motor_state.speed_rad_s);
+//					commands_send_plot_points(motor->m_hfi_plot_sample, motor->m_pll_speed);
 //
 //					commands_plot_set_graph(1);
 //					commands_send_plot_points(motor->m_hfi_plot_sample, motor->m_speed_est_fast);
@@ -3878,7 +3895,6 @@ static THD_FUNCTION(pid_thread, arg) {
  * i_alpha
  * i_beta
  * v_bus
- * speed_rad_s
  *
  * Parameters that will be updated in this function:
  * i_bus

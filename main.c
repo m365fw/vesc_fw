@@ -240,7 +240,7 @@ int main(void) {
 	timer_init();
 	conf_general_init();
 
-	if( flash_helper_verify_flash_memory() == FAULT_CODE_FLASH_CORRUPTION )	{
+	if (flash_helper_verify_flash_memory() == FAULT_CODE_FLASH_CORRUPTION)	{
 		// Loop here, it is not safe to run any code
 		while (1) {
 			chThdSleepMilliseconds(100);
@@ -259,16 +259,17 @@ int main(void) {
 	comm_usb_init();
 #endif
 
-#if CAN_ENABLE
-	comm_can_init();
-#endif
-
 	app_uartcomm_initialize();
 	app_configuration *appconf = mempools_alloc_appconf();
 	conf_general_read_app_configuration(appconf);
 	app_set_configuration(appconf);
 	app_uartcomm_start(UART_PORT_BUILTIN);
 	app_uartcomm_start(UART_PORT_EXTRA_HEADER);
+
+	// This reads the appconf, that must be initialized first.
+#if CAN_ENABLE
+	comm_can_init();
+#endif
 
 #ifdef HW_HAS_PERMANENT_NRF
 	conf_general_permanent_nrf_found = nrf_driver_init();

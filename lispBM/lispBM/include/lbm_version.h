@@ -1,5 +1,5 @@
 /*
-    Copyright 2022 Joel Svensson  svenssonjoel@yahoo.se
+    Copyright 2022, 2023 Joel Svensson  svenssonjoel@yahoo.se
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -27,11 +27,45 @@ extern "C" {
 /** LBM major version */
 #define LBM_MAJOR_VERSION 0
 /** LBM minor version */
-#define LBM_MINOR_VERSION 9
+#define LBM_MINOR_VERSION 15
 /** LBM patch revision */
 #define LBM_PATCH_VERSION 0
 
 /*! \page changelog Changelog
+
+JUN 29 2023: version 0.15.0
+  - Bug fix in lift_array_flash.
+  - Bug fix in map.
+  - Bug fix in reader.
+  - Bug fix in dynamic load.
+  - Bug fix in quasiquotation expansion.
+  - 
+
+JUN 8 2023: Version 0.14.0
+  - wait-for that blocks code unless a flag is set.
+  - Bug fix in undefine.
+  - Lots of cleaning and refactoring.
+
+MAJ 5 2023: Version 0.13.0
+  - Changed behavior of closure application to zero args. Used to be equivalent
+    to application to nil.
+  - Removed make-env and in-env.
+  - Refactoring for readability. allocate_closure in eval_cps.
+
+APR 30 2023: Version 0.12.0
+  - added make-env and in-env for a kind of namespace management.
+  - Deeply nested errors are resolved using longjmp.
+
+Apr 4 2023: Version 0.11.0
+  - Incremental read evaluates expressions as soon as possible while reading.
+  - move-to-flash for storing constant parts of program in flash.
+  - All arrays are now byte-arrays. [type-X 1 2 3]-syntax removed.
+
+Mar 19 2023: Version 0.10.0
+  - Added deconstructive let bindings with optional dont-care fields.
+  - Added (var x (....)) for local bindings in progn.
+  - Added setq
+  - Curly brackets { .... } syntax as sugar over progn.
 
 Feb 18 2023: Version 0.9.0
   - Arrays in flat_value are stored verbatim, not as ptr.

@@ -1,8 +1,7 @@
-/** \file prelude.h */
 /*
-    Copyright 2019, 2022 Joel Svensson        svenssonjoel@yahoo.se
+	Copyright 2015 Benjamin Vedder	benjamin@vedder.se
 
-    This program is free software: you can redistribute it and/or modify
+	This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -14,27 +13,14 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+    */
 
-#ifndef _PRELUDE_H_
-#define _PRELUDE_H_
+#ifndef HW_75_100_V2_005OHM_H_
+#define HW_75_100_V2_005OHM_H_
 
-#include "lbm_types.h"
+#define HW_SOURCE_ALT 		"flipsky/hw_75_100_V2.c"
+#define CURRENT_SHUNT_RES	0.005
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "hw_75_100_V2.h"
 
-
-/** Creates the tokenizer state needed to load the prelude library into the heap.
- *
- * \param lbm_tokenizer_string_state_t pointer
- * \param lbm_tokenizer_char_stream_t pointer
- */
-void prelude_load(lbm_tokenizer_string_state_t *,
-		  lbm_tokenizer_char_stream_t *);
-
-#ifdef __cplusplus
-}
-#endif
-#endif
+#endif /* HW_75_100_V2_005OHM_H_ */

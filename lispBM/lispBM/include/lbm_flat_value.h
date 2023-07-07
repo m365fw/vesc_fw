@@ -24,8 +24,8 @@
 
 typedef struct {
   uint8_t *buf;
-  size_t   buf_size;
-  uint32_t buf_pos;
+  lbm_uint buf_size;
+  lbm_uint buf_pos;
 } lbm_flat_value_t;
                               // Arity   
 #define S_CONS            0x1 // 2      car, cdr
@@ -52,7 +52,7 @@ bool f_u32(lbm_flat_value_t *v, uint32_t w);
 bool f_float(lbm_flat_value_t *v, float f);
 bool f_i64(lbm_flat_value_t *v, int64_t w);
 bool f_u64(lbm_flat_value_t *v, uint64_t w);
-bool f_lbm_array(lbm_flat_value_t *v, uint32_t num_elts, lbm_type t, uint8_t *data);
+bool f_lbm_array(lbm_flat_value_t *v, uint32_t num_bytes, uint8_t *data);
 
 /** Unflatten a flat value stored in an lbm_memory array onto the heap
  *  

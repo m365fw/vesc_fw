@@ -7,22 +7,24 @@
   (if (= 0 n) ()
     (progn
       (event-sym 'apa)
-      (event-sender (- n 1)))))
+      (yield 100)
+      (event-sender (- n 1))
+      )))
     
 (spawn event-sender 100)
 
 
 
-(and (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa)))
-     (recv ((? x) (eq x 'apa))))
+(check (and (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))
+            (recv ((? x) (eq x 'apa)))))
      
 

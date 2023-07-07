@@ -21,6 +21,7 @@
 #include <extensions.h>
 #include <lbm_utils.h>
 #include <lbm_version.h>
+#include <env.h>
 
 static lbm_uint sym_heap_size;
 static lbm_uint sym_heap_bytes;
@@ -73,11 +74,10 @@ lbm_value ext_memory_word_size(lbm_value *args, lbm_uint argn) {
 lbm_value ext_lbm_version(lbm_value *args, lbm_uint argn) {
   (void) args;
   (void) argn;
-  lbm_value version;
-  lbm_heap_allocate_list_init(&version, 3,
-                              lbm_enc_i(LBM_MAJOR_VERSION),
-                              lbm_enc_i(LBM_MINOR_VERSION),
-                              lbm_enc_i(LBM_PATCH_VERSION));
+  lbm_value version = lbm_heap_allocate_list_init(3,
+                                                  lbm_enc_i(LBM_MAJOR_VERSION),
+                                                  lbm_enc_i(LBM_MINOR_VERSION),
+                                                  lbm_enc_i(LBM_PATCH_VERSION));
   return version;
 }
 
@@ -124,6 +124,19 @@ lbm_value ext_lbm_heap_state(lbm_value *args, lbm_uint argn) {
   return res;
 }
 
+lbm_value ext_env_get(lbm_value *args, lbm_uint argn) {
+  (void)args;
+  (void)argn;
+  return lbm_get_env();
+}
+
+lbm_value ext_env_set(lbm_value *args, lbm_uint argn) {
+  if (argn == 1) {
+    *lbm_get_env_ptr() = args[0];
+    return ENC_SYM_TRUE;
+  }
+  return ENC_SYM_NIL;
+}
 bool lbm_runtime_extensions_init(bool minimal) {
 
   if (!minimal) {
@@ -153,6 +166,8 @@ bool lbm_runtime_extensions_init(bool minimal) {
     res = res && lbm_add_extension("word-size", ext_memory_word_size);
     res = res && lbm_add_extension("lbm-version", ext_lbm_version);
     res = res && lbm_add_extension("lbm-heap-state", ext_lbm_heap_state);
+    res = res && lbm_add_extension("env-get", ext_env_get);
+    res = res && lbm_add_extension("env-set", ext_env_set);
   }
   return res;
 }

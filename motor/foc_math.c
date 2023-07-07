@@ -461,7 +461,19 @@ void foc_run_pid_control_speed(float dt, motor_all_state_t *motor) {
 		utils_step_towards((float*)&motor->m_speed_pid_set_rpm, motor->m_speed_command_rpm, conf_now->s_pid_ramp_erpms_s * dt);
 	}
 
-	const float rpm = RADPS2RPM_f(motor->m_motor_state.speed_rad_s);
+	float rpm = 0.0;
+	switch (conf_now->s_pid_speed_source) {
+	case S_PID_SPEED_SRC_PLL:
+		rpm = RADPS2RPM_f(motor->m_pll_speed);
+		break;
+	case S_PID_SPEED_SRC_FAST:
+		rpm = RADPS2RPM_f(motor->m_speed_est_fast);
+		break;
+	case S_PID_SPEED_SRC_FASTER:
+		rpm = RADPS2RPM_f(motor->m_speed_est_faster);
+		break;
+	}
+
 	float error = motor->m_speed_pid_set_rpm - rpm;
 
 	// Too low RPM set. Reset state, release motor and return.
@@ -533,19 +545,11 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 	motor->m_hall_dt_diff_now += dt;
 
 	float rad_per_sec = (M_PI / 3.0) / motor->m_hall_dt_diff_last;
-	float rpm_abs_fast = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));
+	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_pll_speed));
 	float rpm_abs_hall = fabsf(RADPS2RPM_f(rad_per_sec));
 
-	float hyst = conf_now->foc_sl_erpm * 0.2;
-	if (motor->m_using_hall) {
-		if (fminf(rpm_abs_fast, rpm_abs_hall) > (conf_now->foc_sl_erpm + hyst)) {
-			motor->m_using_hall = false;
-		}
-	} else {
-		if (rpm_abs_fast < (conf_now->foc_sl_erpm - hyst)) {
-			motor->m_using_hall = true;
-		}
-	}
+	motor->m_using_hall = rpm_abs < conf_now->foc_sl_erpm;
+	float angle_old = angle;
 
 	int ang_hall_int = conf_now->foc_hall_table[hall_val];
 
@@ -634,6 +638,14 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 		if (motor->m_phase_observer_override && motor->m_state == MC_STATE_RUNNING) {
 			angle = motor->m_phase_now_observer_override;
 		}
+	}
+
+	// Map output angle between hall angle and observer angle in transition region to make
+	// a smooth transition.
+	if (angle_old != angle) {
+		float weight_hall = utils_map(rpm_abs, conf_now->foc_sl_erpm_start, conf_now->foc_sl_erpm, 1.0, 0.0);
+		utils_truncate_number(&weight_hall, 0.0, 1.0);
+		angle = utils_interpolate_angles_rad(angle, angle_old, weight_hall);
 	}
 
 	return angle;

@@ -446,6 +446,29 @@ Example of sending the numbers 1, 2, 3 and 4:
 
 ---
 
+#### recv-data
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(recv-data optTimeout)
+```
+
+Block current thread until data from VESC Tool arrives. The optional argument optTimeout can be used to specify a timeout in seconds.
+
+If a timeout occurs the symbol timeout will be returned, otherwise a byte array with the data will arrive.
+
+Usage example:
+
+```clj
+(print (recv-data))
+> [1 2 3]
+```
+
+---
+
 #### sleep
 
 | Platforms | Firmware |
@@ -1353,6 +1376,20 @@ Returns the encoder position mapped to the electrical position of the motor. Uni
 
 ---
 
+#### phase-hall
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(phase-hall)
+```
+
+Returns the hall sensor position of the motor. Unit: Degrees.
+
+---
+
 #### phase-observer
 
 | Platforms | Firmware |
@@ -1791,6 +1828,20 @@ Actively scan the CAN-bus and return a list with devices that responded. This fu
 
 ---
 
+#### can-local-id
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(can-local-id)
+```
+
+Get local CAN ID.
+
+---
+
 #### can-send-sid
 
 | Platforms | Firmware |
@@ -1825,6 +1876,47 @@ Same as (can-send-sid), but sends extended ID frame.
 
 ---
 
+#### can-recv-sid
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(can-recv-sid optTimeout)
+```
+
+Block current thread until a standard-id can-frame arrives. The optional argument optTimeout can be used to specify a timeout in seconds.
+
+If a timeout occurs the symbol timeout will be returned, otherwise a list with the following format will be returned:
+
+```clj
+(id data)
+```
+
+Usage example:
+
+```clj
+(print (can-recv-sid))
+> (2i32 [1 2 3])
+```
+
+---
+
+#### can-recv-eid
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(can-recv-eid optTimeout)
+```
+
+Same as (can-recv-sid), but waits for extended ID frame.
+
+---
+
 #### can-cmd
 
 | Platforms | Firmware |
@@ -1849,6 +1941,42 @@ Example:
 (def max-speed-kmh 25.0)
 (can-cmd 54 (str-from-n (/ max-speed-kmh 3.6) "(conf-set 'max-speed %.3f)"))
 ```
+
+---
+
+## CAN Messages
+
+---
+
+CAN messages are byte arrays of up to 500 bytes that can be sent between devices over CAN-bus. Together with flat values they are useful for e.g. remote code execution. Each CAN-device has 5 different slots to send messages to.
+
+---
+
+#### canmsg-recv
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(canmsg-recv slot timeout)
+```
+
+Wait for message on slot with timeout seconds. Returns a byte array with the received message on success or timeout if nothing is received before the timeout has passed. A negative timeout means wait forever.
+
+---
+
+#### canmsg-send
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(canmsg-send can-id slot msg)
+```
+
+Send msg over CAN-bus to slot on can-id. msg is a byte array.
 
 ---
 
@@ -3114,6 +3242,38 @@ f
         (sleep 0.5)
 ))
 
+```
+
+---
+
+#### loopwhile-thd
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(loopwhile-thd stack cond body)
+```
+
+While-loop that starts in a new thread. The argument stack is the stack-size of the thread, cond is the condition that has the be true for the loop to continue running and body is the code to execute each iteration. The difference from the regular loopwhile is that the evaluator will continue running the code after this one before this one finishes, as this loop is evaluated in a new thread.
+
+Example that forever prints "Hello World" every two seconds:
+
+```clj
+; Note: This example uses the curly backet for progn for convenience
+
+(loopwhile-thd 100 t {
+        (print "Hello World")
+        (sleep 2)
+})
+
+; The above is equivalent to the following code
+
+(spawn 100 (fn () (loopwhile t {
+                (print "Hello World")
+                (sleep 2)
+})))
 ```
 
 ---
@@ -4649,6 +4809,34 @@ Example:
 
 ---
 
+#### esp-now-recv
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(esp-now-recv optTimeout)
+```
+
+Block current thread until esp-now data arrives. The optional argument optTimeout can be used to specify a timeout in seconds.
+
+If a timeout occurs the symbol timeout will be returned, otherwise a list with the following format will be returned:
+
+```clj
+(src-mac-addr dest-mac-addr payload-array rssi-db)
+```
+
+Usage example:
+
+```clj
+(esp-now-start)
+(print (esp-now-recv))
+> ((112 4 29 15 194 105) (16 145 168 52 203 121) "Test" -40)
+```
+
+---
+
 #### get-mac-addr
 
 | Platforms | Firmware |
@@ -4734,20 +4922,22 @@ Events can be used to receive ESP-NOW data. This is best described with an examp
 ; the broadcast address (255 255 255 255 255 255) it means that this
 ; was a broadcast packet.
 
-(defun proc-data (src des data)
-    (print (list src des data))
+(defun proc-data (src des data rssi)
+    (print (list src des data rssi))
 )
 
 (defun event-handler ()
     (loopwhile t
         (recv
-            ((event-esp-now-rx (? src) (? des) (? data)) (proc-data src des data))
+            ((event-esp-now-rx (? src) (? des) (? data) (? rssi)) (proc-data src des data rssi))
             (_ nil)
 )))
 
 (event-register-handler (spawn event-handler))
 (event-enable 'event-esp-now-rx)
 ```
+
+NOTE: The RSSI was added in firmware 6.05 and should be left out in earlier firmwares.
 
 ---
 

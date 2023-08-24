@@ -91,7 +91,7 @@ static THD_FUNCTION(lib_thd, arg) {
 	lbm_free(t);
 }
 
-static lib_thread lib_spawn(void (*func)(void*), size_t stack_size, char *name, void *arg) {
+lib_thread lispif_spawn(void (*func)(void*), size_t stack_size, char *name, void *arg) {
 	if (!utils_is_func_valid(func)) {
 		commands_printf_lisp("Invalid function address. Make sure that the function is static.");
 		return 0;
@@ -656,7 +656,7 @@ lbm_value ext_load_native_lib(lbm_value *args, lbm_uint argn) {
 		cif.cif.printf = commands_printf_lisp;
 		cif.cif.malloc = lbm_malloc_reserve;
 		cif.cif.free = lbm_free;
-		cif.cif.spawn = lib_spawn;
+		cif.cif.spawn = lispif_spawn;
 		cif.cif.request_terminate = lib_request_terminate;
 		cif.cif.should_terminate = lib_should_terminate;
 		cif.cif.get_arg = lib_get_arg;
@@ -881,10 +881,10 @@ lbm_value ext_load_native_lib(lbm_value *args, lbm_uint argn) {
 		cif.cif.foc_get_iq = mcpwm_foc_get_iq_filter;
 		cif.cif.foc_get_vd = mcpwm_foc_get_vd;
 		cif.cif.foc_get_vq = mcpwm_foc_get_vq;
-		cif.cif.foc_set_openloop_current = mcpwm_foc_set_openloop_current;
-		cif.cif.foc_set_openloop_phase = mcpwm_foc_set_openloop_phase;
-		cif.cif.foc_set_openloop_duty = mcpwm_foc_set_openloop_duty;
-		cif.cif.foc_set_openloop_duty_phase = mcpwm_foc_set_openloop_duty_phase;
+		cif.cif.foc_set_openloop_current = mc_interface_set_openloop_current;
+		cif.cif.foc_set_openloop_phase = mc_interface_set_openloop_phase;
+		cif.cif.foc_set_openloop_duty = mc_interface_set_openloop_duty;
+		cif.cif.foc_set_openloop_duty_phase = mc_interface_set_openloop_duty_phase;
 
 		// Flat values
 		cif.cif.lbm_start_flatten = lbm_start_flatten;

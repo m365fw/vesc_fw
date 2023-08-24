@@ -28,7 +28,6 @@
 #include "hw.h"
 #include "mcpwm.h"
 #include "mcpwm_foc.h"
-#include "mc_interface.h"
 #include "app.h"
 #include "timeout.h"
 #include "servo_dec.h"
@@ -212,7 +211,9 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			packet_id == COMM_EXT_NRF_ESB_RX_DATA) {
 		send_func_nrf = reply_func;
 	} else {
-		send_func = reply_func;
+		if (packet_id != COMM_LISP_RMSG) {
+			send_func = reply_func;
+		}
 	}
 
 	// Avoid calling invalid function pointer if it is null.
@@ -541,7 +542,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			utils_truncate_number(&mcconf->l_current_max_scale , 0.0, 1.0);
 			utils_truncate_number(&mcconf->l_current_min_scale , 0.0, 1.0);
 
-#ifdef HW_HAS_DUAL_MOTORS
+#if defined(HW_HAS_DUAL_MOTORS) & !defined(HW_SET_SINGLE_MOTOR)
 			mcconf->motor_type = MOTOR_TYPE_FOC;
 #endif
 
@@ -1607,7 +1608,8 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 	case COMM_LISP_SET_RUNNING:
 	case COMM_LISP_GET_STATS:
 	case COMM_LISP_REPL_CMD:
-	case COMM_LISP_STREAM_CODE: {
+	case COMM_LISP_STREAM_CODE:
+	case COMM_LISP_RMSG: {
 #ifdef USE_LISPBM
 		lispif_process_cmd(data - 1, len + 1, reply_func);
 #endif

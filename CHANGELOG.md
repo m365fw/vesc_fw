@@ -18,11 +18,26 @@
 	* Added access to several config parameters.
 	* Many improvements and bug fixes.
 	* Better error descriptions.
-* Hall sensors: smooth transition to sensorless.
+	* Added thread profiler.
+	* Added flat value support.
+	* Added recv-to with a timeout argument.
+	* Added remote message extensions.
+	* Added phase-hall extension.
+	* Added loopwhile-thd.
+	* Added can-recv-sid.
+	* Added can-recv-eid.
+* Hall sensors improvements:
+	* Smooth transition to sensorless.
+	* Bug fix in interpolation.
+	* Use less noisy speed estimator for interpolation.
+	* Adjusted rate limit.
 * Added soft regen cutoff. See https://github.com/vedderb/vesc_tool/pull/310
 * Attempt at limiting the input current when using MTPA and field weakening.
 * Removed built-in balance app. The balance-package can be used instead, which is where new development is done.
 * Added option to select PID-controller speed source.
+* Try to make odometer persistent even without shutdown switch. See https://github.com/vedderb/bldc/pull/624
+* Dual motor flux linkage measurement current spike bug fix.
+* Fix possible runaway after faults during openloop measurements (flux linkage, encoder).
 
 ### 6.02
 #### 2023-03-12
@@ -855,3 +870,4 @@
 * HW60 support
 * 3 low/high side shunt support
 * permanent NRF option
+

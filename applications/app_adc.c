@@ -65,6 +65,7 @@ static volatile int adc_detached = 0;
 static volatile bool buttons_detached = false;
 static volatile bool rev_override = false;
 static volatile bool cc_override = false;
+static volatile bool range_ok = true;
 
 void app_adc_configure(adc_config *conf) {
 	if (!buttons_detached && (((conf->buttons >> 0) & 1) || CTRL_USES_BUTTON(conf->ctrl_type))) {
@@ -155,6 +156,10 @@ void app_adc_cc_override(bool state) {
 	timeout_reset();
 }
 
+bool app_adc_range_ok(void) {
+	return range_ok;
+}
+
 static THD_FUNCTION(adc_thread, arg) {
 	(void)arg;
 
@@ -189,15 +194,17 @@ static THD_FUNCTION(adc_thread, arg) {
 			pwr = adc1_override;
 		}
 
-		read_voltage = pwr;
-
-		// Optionally apply a filter
-		static float filter_val = 0.0;
-		UTILS_LP_MOVING_AVG_APPROX(filter_val, pwr, FILTER_SAMPLES);
+		// Read voltage and range check
+		static float read_filter = 0.0;
+		UTILS_LP_MOVING_AVG_APPROX(read_filter, pwr, FILTER_SAMPLES);
 
 		if (config.use_filter) {
-			pwr = filter_val;
+			read_voltage = read_filter;
+		} else {
+			read_voltage = pwr;
 		}
+
+		range_ok = read_voltage >= config.voltage_min && read_voltage <= config.voltage_max;
 
 		// Map the read voltage
 		switch (config.ctrl_type) {
@@ -220,6 +227,14 @@ static THD_FUNCTION(adc_thread, arg) {
 			// Linear mapping between the start and end voltage
 			pwr = utils_map(pwr, config.voltage_start, config.voltage_end, 0.0, 1.0);
 			break;
+		}
+
+		// Optionally apply a filter
+		static float pwr_filter = 0.0;
+		UTILS_LP_MOVING_AVG_APPROX(pwr_filter, pwr, FILTER_SAMPLES);
+
+		if (config.use_filter) {
+			pwr = pwr_filter;
 		}
 
 		// Truncate the read voltage
@@ -463,8 +478,6 @@ static THD_FUNCTION(adc_thread, arg) {
 		default:
 			continue;
 		}
-
-		bool range_ok = read_voltage >= config.voltage_min && read_voltage <= config.voltage_max;
 
 		// If safe start is enabled and the output has not been zero for long enough
 		if ((ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start) || !range_ok) {

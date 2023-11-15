@@ -30,9 +30,12 @@
 #include "lbm_prof.h"
 #include "utils.h"
 
+#define LBM_MEMORY_SIZE_18K LBM_MEMORY_SIZE_64BYTES_TIMES_X(256 + 32)
+#define LBM_MEMORY_BITMAP_SIZE_18K LBM_MEMORY_BITMAP_SIZE(256 + 32)
+
 #define HEAP_SIZE					(2048 + 256 + 160)
-#define LISP_MEM_SIZE				LBM_MEMORY_SIZE_16K
-#define LISP_MEM_BITMAP_SIZE		LBM_MEMORY_BITMAP_SIZE_16K
+#define LISP_MEM_SIZE				LBM_MEMORY_SIZE_18K
+#define LISP_MEM_BITMAP_SIZE		LBM_MEMORY_BITMAP_SIZE_18K
 #define GC_STACK_SIZE				160
 #define PRINT_STACK_SIZE			128
 #define EXTENSION_STORAGE_SIZE		280
@@ -42,12 +45,11 @@
 
 __attribute__((section(".ram4"))) static lbm_cons_t heap[HEAP_SIZE] __attribute__ ((aligned (8)));
 static uint32_t memory_array[LISP_MEM_SIZE];
-static uint32_t bitmap_array[LISP_MEM_BITMAP_SIZE];
-static uint32_t gc_stack_storage[GC_STACK_SIZE];
+__attribute__((section(".ram4"))) static uint32_t bitmap_array[LISP_MEM_BITMAP_SIZE];
 __attribute__((section(".ram4"))) static uint32_t print_stack_storage[PRINT_STACK_SIZE];
 __attribute__((section(".ram4"))) static extension_fptr extension_storage[EXTENSION_STORAGE_SIZE];
 __attribute__((section(".ram4"))) static lbm_value variable_storage[VARIABLE_STORAGE_SIZE];
-static lbm_prof_t prof_data[PROF_DATA_NUM];
+__attribute__((section(".ram4"))) static lbm_prof_t prof_data[PROF_DATA_NUM];
 static volatile bool prof_running = false;
 
 static lbm_string_channel_state_t string_tok_state;
@@ -61,10 +63,12 @@ static lbm_uint *const_heap_ptr = 0;
 static thread_t *eval_tp = 0;
 static THD_FUNCTION(eval_thread, arg);
 static THD_WORKING_AREA(eval_thread_wa, 2048);
-static bool lisp_thd_running = false;
+static volatile bool lisp_thd_running = false;
 static mutex_t lbm_mutex;
 
-static int repl_cid = -1;
+static lbm_cid repl_cid = -1;
+static lbm_cid repl_cid_for_buffer = -1;
+static char *repl_buffer = 0;
 static volatile systime_t repl_time = 0;
 static int restart_cnt = 0;
 
@@ -181,6 +185,13 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 			break;
 		}
 
+		bool print_all = true;
+		if (len > 0) {
+			print_all = data[0];
+		}
+
+		lbm_gc_lock();
+
 		if (lbm_heap_state.gc_num > 0) {
 			heap_use = 100.0 * (float)(HEAP_SIZE - lbm_heap_state.gc_last_free) / (float)HEAP_SIZE;
 		}
@@ -206,9 +217,14 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 			lbm_value key_val = lbm_car(curr);
 			if (lbm_type_of(lbm_car(key_val)) == LBM_TYPE_SYMBOL && lbm_is_number(lbm_cdr(key_val))) {
 				const char *name = lbm_get_name_by_symbol(lbm_dec_sym(lbm_car(key_val)));
-				strcpy((char*)(send_buffer_global + ind), name);
-				ind += strlen(name) + 1;
-				buffer_append_float32_auto(send_buffer_global, lbm_dec_as_float(lbm_cdr(key_val)), &ind);
+
+				if (print_all ||
+						((name[0] == 'v' || name[0] == 'V') &&
+								(name[1] == 't' || name[1] == 'T'))) {
+					strcpy((char*)(send_buffer_global + ind), name);
+					ind += strlen(name) + 1;
+					buffer_append_float32_auto(send_buffer_global, lbm_dec_as_float(lbm_cdr(key_val)), &ind);
+				}
 			}
 
 			if (ind > 300) {
@@ -231,6 +247,8 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				}
 			}
 		}
+
+		lbm_gc_unlock();
 
 		reply_func(send_buffer_global, ind);
 		mempools_free_packet_buffer(send_buffer_global);
@@ -304,6 +322,7 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				commands_printf_lisp("Recovered: %d\n", lbm_heap_state.gc_recovered);
 				commands_printf_lisp("Recovered arrays: %u\n", lbm_heap_state.gc_recovered_arrays);
 				commands_printf_lisp("Marked: %d\n", lbm_heap_state.gc_marked);
+				commands_printf_lisp("GC SP max: %u (size %u)\n", lbm_heap_state.gc_stack.max_sp, lbm_heap_state.gc_stack.size);
 				commands_printf_lisp("--(Symbol and Array memory)--\n");
 				commands_printf_lisp("Memory size: %u Words\n", lbm_memory_num_words());
 				commands_printf_lisp("Memory free: %u Words\n", lbm_memory_num_free());
@@ -407,6 +426,10 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				lbm_set_verbose(verbose_now);
 				commands_printf_lisp("Verbose errors %s", verbose_now ? "Enabled" : "Disabled");
 			} else {
+				if (repl_buffer) {
+					break;
+				}
+
 				bool ok = true;
 				int timeout_cnt = 1000;
 				lbm_pause_eval_with_gc(30);
@@ -417,14 +440,21 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				ok = timeout_cnt > 0;
 
 				if (ok) {
-					lbm_create_string_char_channel(&string_tok_state, &string_tok, (char*)data);
-					repl_cid = lbm_load_and_eval_expression(&string_tok);
-					lbm_continue_eval();
+					repl_buffer = lbm_malloc_reserve(len);
+					if (repl_buffer) {
+						memcpy(repl_buffer, data, len);
+						lbm_create_string_char_channel(&string_tok_state, &string_tok, repl_buffer);
+						repl_cid = lbm_load_and_eval_expression(&string_tok);
+						repl_cid_for_buffer = repl_cid;
+						lbm_continue_eval();
 
-					if (reply_func != NULL) {
-						repl_time = chVTGetSystemTimeX();
+						if (reply_func != NULL) {
+							repl_time = chVTGetSystemTimeX();
+						} else {
+							repl_cid = -1;
+						}
 					} else {
-						repl_cid = -1;
+						commands_printf_lisp("Not enough memory");
 					}
 				} else {
 					commands_printf_lisp("Could not pause");
@@ -605,6 +635,11 @@ static void done_callback(eval_context_t *ctx) {
 			repl_cid = -1;
 		}
 	}
+
+	if (cid == repl_cid_for_buffer && repl_buffer) {
+		lbm_free(repl_buffer);
+		repl_buffer = 0;
+	}
 }
 
 bool lispif_restart(bool print, bool load_code) {
@@ -621,7 +656,7 @@ bool lispif_restart(bool print, bool load_code) {
 
 		if (!lisp_thd_running) {
 			lbm_init(heap, HEAP_SIZE,
-					gc_stack_storage, GC_STACK_SIZE,
+					GC_STACK_SIZE,
 					memory_array, LISP_MEM_SIZE,
 					bitmap_array, LISP_MEM_BITMAP_SIZE,
 					print_stack_storage, PRINT_STACK_SIZE,
@@ -644,7 +679,7 @@ bool lispif_restart(bool print, bool load_code) {
 			}
 
 			lbm_init(heap, HEAP_SIZE,
-					gc_stack_storage, GC_STACK_SIZE,
+					GC_STACK_SIZE,
 					memory_array, LISP_MEM_SIZE,
 					bitmap_array, LISP_MEM_BITMAP_SIZE,
 					print_stack_storage, PRINT_STACK_SIZE,
@@ -719,6 +754,11 @@ bool lispif_restart(bool print, bool load_code) {
 		res = true;
 	}
 
+	if (repl_buffer) {
+		lbm_free(repl_buffer);
+		repl_buffer = 0;
+	}
+
 	return res;
 }
 
@@ -763,4 +803,5 @@ static THD_FUNCTION(eval_thread, arg) {
 	eval_tp = chThdGetSelfX();
 	chRegSetThreadName("Lisp Eval");
 	lbm_run_eval();
+	lisp_thd_running = false;
 }

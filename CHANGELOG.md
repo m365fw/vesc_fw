@@ -26,6 +26,11 @@
 	* Added loopwhile-thd.
 	* Added can-recv-sid.
 	* Added can-recv-eid.
+	* Added app-adc-range-ok.
+	* Much faster return on error for i2c-tx-rx.
+	* Added shutdown-hold.
+	* Added crc32.
+	* Support for only polling variables starting with VT.
 * Hall sensors improvements:
 	* Smooth transition to sensorless.
 	* Bug fix in interpolation.
@@ -38,6 +43,10 @@
 * Try to make odometer persistent even without shutdown switch. See https://github.com/vedderb/bldc/pull/624
 * Dual motor flux linkage measurement current spike bug fix.
 * Fix possible runaway after faults during openloop measurements (flux linkage, encoder).
+* Added more current sampling modes.
+* Added FOC interpolation mode.
+* Allow passive flux linkage measurement.
+* Fixed some braking glitches.
 
 ### 6.02
 #### 2023-03-12

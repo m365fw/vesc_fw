@@ -39,7 +39,7 @@ extern "C" {
 #define EVAL_CPS_CONTEXT_FLAG_TRAP                  (uint32_t)0x1
 #define EVAL_CPS_CONTEXT_FLAG_CONST                 (uint32_t)0x2
 #define EVAL_CPS_CONTEXT_FLAG_CONST_SYMBOL_STRINGS  (uint32_t)0x4
-#define EVAL_CPS_CONTEXT_FLAG_INCREMENTAL_READ      (uint32_t)0x5
+#define EVAL_CPS_CONTEXT_FLAG_INCREMENTAL_READ      (uint32_t)0x8
   
 /** The eval_context_t struct represents a lispbm process.
  *
@@ -68,7 +68,6 @@ typedef struct eval_context_s{
   char *name;
   lbm_cid id;
   lbm_cid parent;
-  lbm_uint wait_mask;
   /* while reading */
   lbm_int row0;
   lbm_int row1;
@@ -223,9 +222,19 @@ uint32_t lbm_get_eval_state(void);
  *  and will in that case be freed when the context
  *  that errored is removed.
  * \param error_str
- * \return 1 on success and 0 on failure.
  */
-int lbm_set_error_reason(char *error_str);
+void lbm_set_error_reason(char *error_str);
+/** Provide the expression that is most suspicious
+ *  in relation to the error at hand.
+ * \param lbm_value
+ */
+void lbm_set_error_suspect(lbm_value suspect);
+/** Terminate the runtime system in response to an
+  *  error that it is not possible to recover from.
+  */
+void lbm_critical_error(void);
+/** Set the critical error callback */
+void lbm_set_critical_error_callback(void (*fptr)(void));
 /** Create a context and enqueue it as runnable.
  *
  * \param program The program to evaluate in the context.

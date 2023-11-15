@@ -257,6 +257,9 @@ ADC3 on the COMM-port. Note that some hardware does not have this channel - then
 **Channel 3:**  
 This is the ADC-channel that the motor temperature sensor goes to. Note: if you want to use this channel for something else you have to disable the motor temperature sensor in General -> Advanced. Otherwise the input might generate overtemperature faults.
 
+**Channel 4+:**  
+Some hardware has additional ADC-channels which also can be read with this function. If they are missing the voltage on ADC1 is returned instead.
+
 ---
 
 #### override-temp-motor
@@ -339,7 +342,7 @@ Note: The AUX output mode must be set to Unused in Motor Settings->General->Adva
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (get-imu-rpy)
@@ -357,7 +360,7 @@ The function (ix list ind) can be used to get an element from the list. Example:
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (get-imu-quat)
@@ -370,7 +373,7 @@ Get a list of quaternions from the IMU (q0, q1, q2 and q3).
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (get-imu-acc)
@@ -383,7 +386,7 @@ Get a list of the x, y and z acceleration from the IMU in G.
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (get-imu-gyro)
@@ -396,7 +399,7 @@ Get a list of the x, y and z angular rate from the IMU in degrees/s.
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (get-imu-mag)
@@ -409,7 +412,7 @@ Get a list of the x, y and z magnetic field strength from the IMU in uT. Note th
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 Same as get-imu-acc, but derotates the result first. This means that the acceleration will be relative to the horizon and not the IMU chip.
 
@@ -419,7 +422,7 @@ Same as get-imu-acc, but derotates the result first. This means that the acceler
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 Same as get-imu-gyro, but derotates the result first. This means that the angular rates will be relative to the horizon and not the IMU chip.
 
@@ -594,6 +597,20 @@ Calculate the 16-bit crc of array. optLen is an optional argument for how many e
 
 ---
 
+#### crc32
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(crc32 array init optLen)
+```
+
+Calculate the 32-bit crc of array. optLen is an optional argument for how many elements to include, if it is left out the entire array will be used. The crc uses the polynomial 0x4C11DB7 (ethernet) and initial value init.
+
+---
+
 #### main-init-done
 
 | Platforms | Firmware |
@@ -605,6 +622,34 @@ Calculate the 16-bit crc of array. optLen is an optional argument for how many e
 ```
 
 Returns true when the main-function is done with all initialization.
+
+---
+
+#### shutdown-hold
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(shutdown-hold hold)
+```
+
+Hold shutdown. When hold is true hardware shutdown will be delayed until hold is set to false again. Can be used when catching a shutdown-event if more time is needed for cleanup.
+
+---
+
+#### reboot
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(reboot)
+```
+
+Reboot CPU. Required on the express when e.g. changing wifi-settings.
 
 ---
 
@@ -656,10 +701,25 @@ Detaches a peripherial from the APP ADC
 ;        - 1 ADC2
 ;        - 2 Reverse button
 ;        - 3 Cruise control button
-; val : 0.0 to 1.0 (button pressed is > 0.0)
+; value : 0.0 to 3.3 (button pressed is > 0.0)
+; Note that throttle mapping also is applied to the override value.
 ```
 
 Sets the override value
+
+---
+
+#### app-adc-range-ok
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(app-adc-range-ok)
+```
+
+Returns true when the throttle voltage is within range and false (nil) otherwise.
 
 ---
 
@@ -987,6 +1047,34 @@ Get FOC d-axis current.
 ```
 
 Get FOC q-axis current.
+
+---
+
+#### get-id-set
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(get-id-set)
+```
+
+Get the set FOC d-axis current. This is the raw requested current.
+
+---
+
+#### get-iq-set
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(get-iq-set)
+```
+
+Get the set FOC q-axis current. This is the raw requested current.
 
 ---
 
@@ -2560,6 +2648,38 @@ Sends a sequence of bits in an attempt to restore the i2c-bus. Can be used if an
 
 ---
 
+#### imu-start-lsm6
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(imu-start-lsm6 optRate optPinSda optPinScl)
+```
+
+Start LSM6DSx IMU driver over i2c. Takes the same arguments as i2c-start and shares the same i2c-pins. Example:
+
+```clj
+(imu-start-lsm6 'rate-400k 21 20)
+```
+
+---
+
+#### imu-stop
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(imu-stop)
+```
+
+Stop IMU-driver and put IMU in sleep mode.
+
+---
+
 ### GPIO
 
 These functions allow using GPIO-pins from lispBM. The UART and SWD pins can currently be used. NOTE: If you are using the SWD-pins a SWD-programmer won't work after that until the next reset. If you are using the hall sensor pins make sure that sensor port mode is not set to anything that will communicate with encoders using those pins. Leaving the sensor port in hall sensor mode should be fine.
@@ -2717,6 +2837,54 @@ Get the period of the last captured pulse. The unit is timer ticks, which depend
 
 ---
 
+### AS504x Encoder
+
+The AS504x (AS5047, AS5048) encoder can be used on any pins using software SPI.
+
+---
+
+#### as5047x-init
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(as5047x-init pin-miso pin-sck pin-cs)
+```
+
+Initialize the AS504x-driver on the specified pins.
+
+---
+
+#### as5047x-deinit
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(as5047x-deinit)
+```
+
+De-initialize the AS504x-driver and restore the pins.
+
+---
+
+#### as5047x-angle
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(as5047x-angle)
+```
+
+Read angle from the AS504x-encoder in degrees.
+
+---
+
 ### Configuration
 
 The following selection of app and motor parameters can be read and set from LispBM:
@@ -2737,17 +2905,18 @@ The following selection of app and motor parameters can be read and set from Lis
 'l-min-duty             ; Minimum duty cycle
 'l-max-duty             ; Maximum duty cycle
 'l-watt-min             ; Minimum power regen in W (a negative value)
+'l-watt-max             ; Maximum power regen in W
 'l-battery-cut-start    ; The voltage where current starts to get reduced
 'l-battery-cut-end      ; The voltage below which current draw is not allowed
 'l-temp-motor-start     ; Temperature where motor current starts to get reduced
 'l-temp-motor-end       ; Temperature above which motor current is not allowed
 'l-temp-accel-dec       ; Decrease temp limits this much during acceleration
+'bms-limit-mode         ; BMS limit mode bitfield (Added in FW 6.05)
 'motor-type             ; Motor Type
                         ;    0: BLDC (6-step commutation)
                         ;    1: DC (DC motor on phase A and C)
                         ;    2: FOC (Field Oriented Control)
                         ;    3: GPD (General Purpose Drive)
-'l-watt-max             ; Maximum power regen in W
 'm-invert-direction     ; Invert motor direction, 0 or 1
 'm-out-aux-mode         ; AUX-pin output mode. Options:
                         ;    0:  OUT_AUX_MODE_OFF
@@ -2775,8 +2944,13 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    8: FOC_SENSOR_MODE_HFI_V5
 'm-ntc-motor-beta       ; Beta Value for Motor Thermistor
 'si-motor-poles         ; Number of motor poles, must be multiple of 2
+'si-gear-ratio          ; Gear ratio (Added in FW 6.05)
+'si-wheel-diameter      ; Wheel diameter in meters (Added in FW 6.05)
+'si-battery-cells       ; Number of battery cells in series (Added in FW 6.05)
+'si-battery-ah          ; Battery amp hours (Added in FW 6.05)
 'foc-current-kp         ; FOC current controller KP
 'foc-current-ki         ; FOC current controller KI
+'foc-f-zv               ; Zero Vector Frequency in Hz (Added in FW 6.05)
 'foc-motor-l            ; Motor inductance in microHenry
 'foc-motor-ld-lq-diff   ; D and Q axis inductance difference in microHenry
 'foc-motor-r            ; Motor resistance in milliOhm
@@ -2785,6 +2959,16 @@ The following selection of app and motor parameters can be read and set from Lis
 'foc-hfi-voltage-start  ; HFI start voltage (V) (for resolving ambiguity)
 'foc-hfi-voltage-run    ; HFI voltage (V) HFI voltage at min current
 'foc-hfi-voltage-max    ; HFI voltage (V) at max current
+'foc-sl-erpm            ; Full sensorless control (Added in FW 6.05)
+'foc-sl-erpm-start      ; Start sensorless transition here (Added in FW 6.05)
+'foc-hall-t0            ; Hall table index 0 (Added in FW 6.05)
+'foc-hall-t1            ; Hall table index 1 (Added in FW 6.05)
+'foc-hall-t2            ; Hall table index 2 (Added in FW 6.05)
+'foc-hall-t3            ; Hall table index 3 (Added in FW 6.05)
+'foc-hall-t4            ; Hall table index 4 (Added in FW 6.05)
+'foc-hall-t5            ; Hall table index 5 (Added in FW 6.05)
+'foc-hall-t6            ; Hall table index 6 (Added in FW 6.05)
+'foc-hall-t7            ; Hall table index 7 (Added in FW 6.05)
 'foc-sl-erpm-hfi        ; ERPM where to move to sensorless in HFI mode
 'foc-openloop-rpm       ; Use openloop commutation below this ERPM
 'foc-openloop-rpm-low   ; Openloop ERPM and minimum current
@@ -2793,6 +2977,8 @@ The following selection of app and motor parameters can be read and set from Lis
 'foc-sl-openloop-time   ; Stay in openloop for this amount of time
 'foc-temp-comp          ; Use observer temperature compensation
 'foc-temp-comp-base-temp ; Temperature at which parameters were measured
+'foc-fw-current-max     ; Maximum field weakening current (Added in FW 6.05)
+'foc-fw-duty-start      ; Duty where field weakening starts (Added in FW 6.05)
 'min-speed              ; Minimum speed in meters per second (a negative value)
 'max-speed              ; Maximum speed in meters per second
 'app-to-use             ; App to use
@@ -2805,10 +2991,19 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    6: APP_NUNCHUK
                         ;    7: APP_NRF
                         ;    8: APP_CUSTOM
-                        ;    9: APP_BALANCE
-                        ;    10: APP_PAS
-                        ;    11: APP_ADC_PAS
+                        ;    9: APP_PAS
+                        ;    10: APP_ADC_PAS
 'controller-id          ; VESC CAN ID
+'can-baud-rate          ; CAN-bus baud rate (Added in FW 6.05)
+                        ; 0: 125K
+                        ; 1: 250K
+                        ; 2: 500K
+                        ; 3: 1M
+                        ; 4: 10K
+                        ; 5: 20K
+                        ; 6: 50K
+                        ; 7: 75K
+                        ; 8: 100K
 'ppm-ctrl-type          ; PPM Control Type
                         ;    0:  PPM_CTRL_TYPE_NONE
                         ;    1:  PPM_CTRL_TYPE_CURRENT
@@ -2843,7 +3038,46 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    12: ADC_CTRL_TYPE_PID
                         ;    13: ADC_CTRL_TYPE_PID_REV_CENTER
                         ;    14: ADC_CTRL_TYPE_PID_REV_BUTTON
+'adc-ramp-time-pos      ; Positive ramping time in seconds (Added in FW 6.05)
+'adc-ramp-time-neg      ; Negative ramping time in seconds (Added in FW 6.05)
+'adc-thr-hyst           ; Throttle hysteresis, range 0 to 1 (Added in FW 6.05)
+'adc-v1-start           ; Throttle 1 start voltage (Added in FW 6.05)
+'adc-v1-end             ; Throttle 1 end voltage (Added in FW 6.05)
+'adc-v1-min             ; Throttle 1 low fault voltage (Added in FW 6.05)
+'adc-v1-max             ; Throttle 1 high fault voltage (Added in FW 6.05)
 'pas-current-scaling    ; PAS current scaling (Added in FW 6.05)
+
+; Express settings (Added in 6.05)
+'controller-id          ; VESC CAN ID
+'can-baud-rate          ; CAN-bus baud rate
+                        ; 0: 125K
+                        ; 1: 250K
+                        ; 2: 500K
+                        ; 3: 1M
+                        ; 4: 10K
+                        ; 5: 20K
+                        ; 6: 50K
+'can-status-rate-hz     ; CAN status message rate
+'wifi-mode              ; Wifi mode
+                        ; 0: Disabled
+                        ; 1: Station
+                        ; 2: Access Point
+'wifi-sta-ssid          ; Wifi station SSID
+'wifi-sta-key           ; Wifi station Key
+'wifi-ap-ssid           ; Wifi access point SSID
+'wifi-ap-key            ; Wifi access point key
+'use-tcp-local          ; Use local TCP server
+'use-tcp-hub            ; Connecto to TCP hub
+'tcp-hub-url            ; TCP hub URL
+'tcp-hub-port           ; TCP hub port
+'tcp-hub-id             ; TCP hub connection ID
+'tcp-hub-pass           ; TCP hub password
+'ble-mode               ; BLE mode
+                        ; 0: Disabled
+                        ; 1: Enabled
+                        ; 2: Enabled and encrypted with pin
+'ble-name               ; Device name (also the name that shows up in VESC Tool)
+'ble-pin                ; BLE pin code
 ```
 
 ---
@@ -2852,7 +3086,7 @@ The following selection of app and motor parameters can be read and set from Lis
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (conf-set param value)
@@ -2870,7 +3104,7 @@ Set param to value. This can be done while the motor is running and it will be a
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (conf-get param optDefLim)
@@ -2890,13 +3124,13 @@ Get the value of param. optDefLim is an optional argument that can be set to 1 o
 
 | Platforms | Firmware |
 |---|---|
-| ESC | 6.00+ |
+| ESC, Express | 6.00+ |
 
 ```clj
 (conf-store)
 ```
 
-Store the current configuration to flash. This will stop the motor.
+Store the current configuration to flash. This will stop the motor. Note: On the express most settings require a reboot to be applied. Remember to use conf-store before rebooting.
 
 ---
 
@@ -2982,7 +3216,7 @@ This command is useful to update the configuration before starting the motor as 
 | ESC | 6.02+ |
 
 ```clj
-(conf-measure-res target-current optSamples)
+(conf-measure-ind target-current optSamples)
 ```
 
 Measure motor inductance with target-current. The optional argument optSamples sets the number of samples to use (default 100).
@@ -3033,7 +3267,29 @@ Restore app configuration to the default values.
 (conf-dc-cal calUndriven)
 ```
 
-Run FOC DC offset calibration. calUndriven can be set to true for including the undriven voltages in the calibration, which requires that the motor stands still.
+Run FOC DC offset calibration. calUndriven can be set to true for including the undriven voltages in the calibration, which requires that the motor stands still. If the calibration fails nil is returned and on success a list with the new offsets in the following format is returned:
+
+```clj
+(i0 i1 i2 v0 v1 v2 v0-undriven v1-undriven v2-undriven)
+```
+
+---
+
+#### conf-get-limits
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.05+ |
+
+```clj
+(conf-get-limits)
+```
+
+Get all overridden current limits from speed, temperature, voltage, wattage etc. Return the following list:
+
+```clj
+(motor-min motor-max input-min input-max)
+```
 
 ---
 
@@ -3945,12 +4201,19 @@ The following example shows how to spawn a thread that handles SID (standard-id)
 Possible events to register are
 
 ```clj
-(event-enable 'event-can-sid)  ; Sends (signal-can-sid . (id . data)), where id is U32 and data is a byte array
-(event-enable 'event-can-eid)  ; Sends (signal-can-eid . (id . data)), where id is U32 and data is a byte array
-(event-enable 'event-data-rx)  ; Sends (signal-data-rx . data), where data is a byte array
-(event-enable 'event-shutdown) ; Sends signal-shutdown
-(event-enable 'event-icu-width) ; Sends (event-icu-width . (width . period))
-(event-enable 'event-icu-period) ; Sends (event-icu-period . (width . period))
+(event-enable 'event-can-sid)  ; -> (event-can-sid . (id . data)), where id is U32 and data is a byte array
+(event-enable 'event-can-eid)  ; -> (event-can-eid . (id . data)), where id is U32 and data is a byte array
+(event-enable 'event-data-rx)  ; -> (event-data-rx . data), where data is a byte array
+(event-enable 'event-shutdown) ; -> event-shutdown
+(event-enable 'event-icu-width) ; -> (event-icu-width . (width . period))
+(event-enable 'event-icu-period) ; -> (event-icu-period . (width . period))
+
+; BMS events (currently express only)
+(event-enable 'event-bms-chg-allow) ; -> (event-bms-chg-allow allow)
+(event-enable 'event-bms-bal-ovr) ; -> (event-bms-bal-ovr ch bal)
+(event-enable 'event-bms-reset-cnt) ; -> event-bms-reset-cnt
+(event-enable 'event-bms-force-bal) ; -> (event-bms-force-bal force)
+(event-enable 'event-bms-zero-ofs) ; -> event-bms-zero-ofs
 ```
 
 The CAN-frames arrive whenever data is received on the CAN-bus and data-rx is received for example when data is sent from a Qml-script in VESC Tool.
@@ -4357,6 +4620,20 @@ Lowering this value is useful if there are one or more timing-critical threads (
 
 ---
 
+#### lbm-set-gc-stack-size
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(lbm-set-gc-stack-size new-size)
+```
+
+Change the stack size for the garbage collector. If the GC stack is too small the program can crash during garbage collection and print a message stating that it ran out of GC stack. If that happens increasing the size from the default of 160 can help. Note that the GC stack is on LBM memory and increasing its size leaves less memory available for other things.
+
+---
+
 ## Plotting
 
 VESC Tool can be used for plotting data. The easiest way to plot a variable is to just select it in the binding tab while "Poll Status" is active and go to the binding plot below the editor. The plot commands in this section make plots that show up in the "Experiment Plot" tab below the editor and allow more control over the plotting.
@@ -4592,6 +4869,9 @@ Name string.
 
 **unit**  
 Unit string.
+
+**precision**  
+Number of decimals.
 
 **is-relative**  
 Relative fields are displayed relative to the start value of the log.
@@ -4955,6 +5235,320 @@ Events can be used to receive ESP-NOW data. This is best described with an examp
 ```
 
 NOTE: The RSSI was added in firmware 6.05 and should be left out in earlier firmwares.
+
+---
+
+## File System (SD Card)
+
+When a SD-card is present in the VESC Express files can be listed, read, written and removed. Directories can also be created and removed.
+
+---
+
+#### f-open
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-open path mode)
+```
+
+Open a file in open-mode mode (r, w or rw). Returns a number that can be used as a handle to the file on success or nil if the file could not be opened. Example:
+
+```clj
+(def f (f-open "test.txt" "w")) ; Open test.txt in write-only mode and store the handle as f.
+```
+
+---
+
+#### f-close
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-close file)
+```
+
+Close file. The argument file is the handle returned by f-open.
+
+---
+
+#### f-read
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-read file size)
+```
+
+Read up to size bytes from file. Returns an array with the read data. Successive calls to f-read will move the file position forwards. If the returned array is smaller than the size-argument it means that the end of the file was reached. When calling read after reaching the end if the file nil is returned.
+
+---
+
+#### f-readline
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-readline file maxlen)
+```
+
+Read one line from file. At most maxlen bytes will be read. If maxlen is set too high this function will fail as it needs to pre-allocate enough memory to fit maxlen. This function advances the file position, so successive calls to it can be used to read the file line-by-line. When the end of the file is reached nil is returned.
+
+---
+
+#### f-write
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-write file buf)
+```
+
+Write array buf to file. This will advance the file position by the size of buf. 
+
+---
+
+#### f-tell
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-tell file)
+```
+
+Get the current position in the file.
+
+---
+
+#### f-seek
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-seek file pos)
+```
+
+Seek to position pos in file. If pos is a negative number the seek is done from the end of the file.
+
+---
+
+#### f-mkdir
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-mkdir path)
+```
+
+Make directory on path.
+
+---
+
+#### f-rm
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-rm path)
+```
+
+Remove path recursively. If path is a file just the file is removed and if it is a directory that directory and all its content will be removed recursively.
+
+---
+
+#### f-ls
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-ls path)
+```
+
+List all files and directories in path. Returns a list with the entries; each entry is a list where the first element is the name, the second element is true for directories and nil for files and the third element is the size. For directories the size says how many entries that directory has and for files it says what size the file has in bytes.
+
+Example:
+
+```clj
+(f-ls "")
+> ("testsize.bin" nil 100) ("test.txt" nil 7) ("old_logs" t 47))
+```
+
+---
+
+#### f-size
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-size file)
+```
+
+Get the size of a file in bytes. File can be a path (e.g. "test.txt") or a file pointer opened with f-open.
+
+---
+
+#### f-fatinfo
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-fatinfo)
+```
+
+Returns a list where the first element is the free space on the file system and the second element is the total size of the file system. Unit: MB. Example:
+
+```clj
+(f-fatinfo)
+> (30298 30417)
+```
+
+---
+
+## Firmware Update
+
+The firmware can be updated locally and on CAN-devices. This requires that the firmware-file is pre-processed using VESC Tool with the cli-command --packFirmware.
+
+---
+
+#### fw-erase
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(fw-erase size optCanId)
+```
+
+Erase firmware-buffer. This is required before writing the firmware. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### fw-write
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(fw-write offset data optCanId)
+```
+
+Write data to firmware-buffer at offset. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### fw-reboot
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(fw-reboot optCanId)
+```
+
+Reboot and attempt to load the new firmware from the firmware-buffer using the bootloader. This function always returns true as there is no easy way to get the response from the bootloader. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+## Lisp and Qml Upload
+
+Lisp and QML-scripts can be updated locally and on CAN-devices. This requires that the file is pre-processed using VESC Tool with the cli-command --packLisp and --packQml.
+
+---
+
+#### lbm-erase
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(lbm-erase optCanId)
+```
+
+Erase lisp-code. This is required before writing new code. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### qml-erase
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(qml-erase optCanId)
+```
+
+Erase qml-code. This is required before writing new code. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### lbm-write
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(lbm-write offset data optCanId)
+```
+
+Write data to lbm-buffer at offset. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### qml-write
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(qml-write offset data optCanId)
+```
+
+Write data to qml-buffer at offset. Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### lbm-run
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(lbm-run running optCanId)
+```
+
+Run or stop the lbm-code (run if running is 1, stop otherwise). Returns true on success or nil/timeout on failure. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
 
 ---
 

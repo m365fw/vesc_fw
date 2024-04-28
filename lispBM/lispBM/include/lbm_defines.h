@@ -1,5 +1,5 @@
 /*
-    Copyright 2022 Joel Svensson        svenssonjoel@yahoo.se
+    Copyright 2022, 2024 Joel Svensson        svenssonjoel@yahoo.se
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,12 +25,27 @@
 
 #ifndef LBM64
 
+#define LBM_ADDRESS_SHIFT               2
+#define LBM_VAL_SHIFT                   4
+#define LBM_ENC_1                       0x10
+
+#define LBM_PTR_MASK                     0x00000001u
+#define LBM_PTR_BIT                      0x00000001u
+#define LBM_PTR_VAL_MASK                 0x03FFFFFCu
+#define LBM_PTR_TYPE_MASK                0xFC000000u
+#define LBM_PTR_NULL                     (0x03FFFFFCu >> 2)
+
+// The address is an index into the const heap.
+#define LBM_PTR_TO_CONSTANT_BIT          0x04000000u
+#define LBM_PTR_TO_CONSTANT_MASK         ~LBM_PTR_TO_CONSTANT_BIT
+#define LBM_PTR_TO_CONSTANT_SHIFT        26
+
 #define LBM_POINTER_TYPE_FIRST           0x10000000u
 #define LBM_TYPE_CONS                    0x10000000u
 #define LBM_TYPE_CONS_CONST              0x14000000u
 #define LBM_NON_CONS_POINTER_TYPE_FIRST  0x20000000u
-#define LBM_TYPE_U32                     0x28000000u
-#define LBM_TYPE_I32                     0x38000000u
+#define LBM_TYPE_I32                     0x28000000u
+#define LBM_TYPE_U32                     0x38000000u
 #define LBM_TYPE_I64                     0x48000000u
 #define LBM_TYPE_U64                     0x58000000u
 #define LBM_TYPE_FLOAT                   0x68000000u
@@ -41,6 +56,9 @@
 #define LBM_NON_CONS_POINTER_TYPE_LAST   0xAC000000u
 #define LBM_POINTER_TYPE_LAST            0xAC000000u
 
+#define LBM_CONS_TYPE_MASK               0xF0000000u
+#define LBM_CONS_CONST_TYPE_MASK         0xFF000000u
+
 #define LBM_CONTINUATION_INTERNAL        0xF8000001u // PTR bit set
 #define LBM_CONTINUATION_INTERNAL_TYPE   0xF8000000u
 
@@ -49,27 +67,47 @@
 
 #define LBM_VAL_MASK                     0xFFFFFFF0u
 #define LBM_VAL_TYPE_MASK                0x0000000Cu
+#define LBM_TYPE_MASK                    0xFC00000Cu
+#define LBM_NUMBER_MASK                  0x08000000u
                                                      //    gc ptr
 #define LBM_TYPE_SYMBOL                  0x00000000u // 00  0   0
 #define LBM_TYPE_CHAR                    0x00000004u // 01  0   0
 #define LBM_TYPE_BYTE                    0x00000004u
-#define LBM_TYPE_U                       0x00000008u // 10  0   0
-#define LBM_TYPE_I                       0x0000000Cu // 11  0   0
+#define LBM_TYPE_I                       0x00000008u // 10  0   0
+#define LBM_TYPE_U                       0x0000000Cu // 11  0   0
+#define LBM_LOW_RESERVED_BITS            0x0000000Fu // 11  1   1
 
 #else /* 64 bit Version */
+
+#define LBM_ADDRESS_SHIFT                2
+#define LBM_VAL_SHIFT                    8
+#define LBM_ENC_1                        0x100
+
+#define LBM_PTR_MASK                     (lbm_uint)0x1
+#define LBM_PTR_BIT                      (lbm_uint)0x1
+#define LBM_PTR_VAL_MASK                 (lbm_uint)0x03FFFFFFFFFFFFFC
+#define LBM_PTR_TYPE_MASK                (lbm_uint)0xFC00000000000000
+#define LBM_PTR_NULL                     ((lbm_uint)0x03FFFFFFFFFFFFFC >> 2)
+
+#define LBM_PTR_TO_CONSTANT_BIT          (lbm_uint)0x0400000000000000
+#define LBM_PTR_TO_CONSTANT_MASK         ~LBM_PTR_TO_CONSTANT_BIT
+#define LBM_PTR_TO_CONSTANT_SHIFT        58
 
 #define LBM_POINTER_TYPE_FIRST           (lbm_uint)0x1000000000000000
 #define LBM_TYPE_CONS                    (lbm_uint)0x1000000000000000
 #define LBM_TYPE_CONS_CONST              (lbm_uint)0x1400000000000000
 #define LBM_NON_CONS_POINTER_TYPE_FIRST  (lbm_uint)0x2000000000000000
-#define LBM_TYPE_U64                     (lbm_uint)0x2800000000000000
-#define LBM_TYPE_I64                     (lbm_uint)0x3800000000000000
+#define LBM_TYPE_I64                     (lbm_uint)0x2800000000000000
+#define LBM_TYPE_U64                     (lbm_uint)0x3800000000000000
 #define LBM_TYPE_DOUBLE                  (lbm_uint)0x4800000000000000
 #define LBM_TYPE_ARRAY                   (lbm_uint)0x5000000000000000
 #define LBM_TYPE_CHANNEL                 (lbm_uint)0x7000000000000000
 #define LBM_TYPE_CUSTOM                  (lbm_uint)0x8000000000000000
 #define LBM_NON_CONS_POINTER_TYPE_LAST   (lbm_uint)0x8000000000000000
 #define LBM_POINTER_TYPE_LAST            (lbm_uint)0x8000000000000000
+
+#define LBM_CONS_TYPE_MASK               (lbm_uint)0xF000000000000000
+#define LBM_CONS_CONST_TYPE_MASK         (lbm_uint)0xFF00000000000000
 
 #define LBM_CONTINUATION_INTERNAL        (lbm_uint)0xF800000000000001
 #define LBM_CONTINUATION_INTERNAL_TYPE   (lbm_uint)0xF800000000000000
@@ -80,15 +118,18 @@
 /* 8 - 2 free bits to encode type information into */
 #define LBM_VAL_MASK                    (lbm_uint)0xFFFFFFFFFFFFFF00
 #define LBM_VAL_TYPE_MASK               (lbm_uint)0xFC
+#define LBM_TYPE_MASK                   (lbm_uint)0xF8000000000000FC
+#define LBM_NUMBER_MASK                 (lbm_uint)0x0800000000000000
 //    gc ptr
-#define LBM_TYPE_SYMBOL                 (lbm_uint)0x0 // 00 00 00  0   0
-#define LBM_TYPE_CHAR                   (lbm_uint)0x4 // 00 00 01  0   0
+#define LBM_TYPE_SYMBOL                 (lbm_uint)0x0  // 00 00 00  0   0
+#define LBM_TYPE_CHAR                   (lbm_uint)0x4  // 00 00 01  0   0
 #define LBM_TYPE_BYTE                   (lbm_uint)0x4
-#define LBM_TYPE_U                      (lbm_uint)0x8 // 00 00 10  0   0
-#define LBM_TYPE_I                      (lbm_uint)0xC // 00 00 11  0   0
-#define LBM_TYPE_U32                    (lbm_uint)0x14// 00 01 01  0   0
-#define LBM_TYPE_I32                    (lbm_uint)0x18// 00 01 10  0   0
-#define LBM_TYPE_FLOAT                  (lbm_uint)0x1C// 00 01 11  0   0
+#define LBM_TYPE_I32                    (lbm_uint)0x8  // 00 00 10  0   0
+#define LBM_TYPE_U32                    (lbm_uint)0xC  // 00 00 11  0   0
+#define LBM_TYPE_I                      (lbm_uint)0x14 // 00 01 01  0   0
+#define LBM_TYPE_U                      (lbm_uint)0x18 // 00 01 10  0   0
+#define LBM_TYPE_FLOAT                  (lbm_uint)0x1C // 00 01 11  0   0
+#define LBM_LOW_RESERVED_BITS           (lbm_uint)0xFF // 11 11 11  1   1
 
 #endif
 /* ------------------------------------------------------------
@@ -192,101 +233,135 @@
 #define SYM_PROGN_VAR           0x112
 #define SYM_SETQ                0x113
 #define SYM_MOVE_TO_FLASH       0x114
-#define SPECIAL_FORMS_END       0x114
+#define SYM_LOOP                0x115
+#define SPECIAL_FORMS_END       0x115
+
+#ifndef LBM64
+#define SPECIAL_FORMS_MASK        0xFFFFFF00
+#define SPECIAL_FORMS_BIT         0x00000100
+#define ENC_SPECIAL_FORMS_MASK    0xFFFFF000
+#define ENC_SPECIAL_FORMS_BIT     0x00001000
+#define SPECIAL_FORMS_INDEX_MASK  0x000000FF
+#else
+#define SPECIAL_FORMS_MASK        0xFFFFFFFFFFFFFF00
+#define SPECIAL_FORMS_BIT         0x0000000000000100
+#define ENC_SPECIAL_FORMS_MASK    0xFFFFFFFFFFFF0000
+#define ENC_SPECIAL_FORMS_BIT     0x0000000000010000
+#define SPECIAL_FORMS_INDEX_MASK  0x00000000000000FF
+#endif
+
+// Fundamental built in operations that take their
+// arguments on stack. Fundamentals do not handle
+// their own GC and they are not allowed to create
+// continuations.
+#define SYM_ADD                 0x20000
+#define SYM_SUB                 0x20001
+#define SYM_MUL                 0x20002
+#define SYM_DIV                 0x20003
+#define SYM_MOD                 0x20004
+#define SYM_EQ                  0x20005
+#define SYM_NOT_EQ              0x20006
+#define SYM_NUMEQ               0x20007
+#define SYM_NUM_NOT_EQ          0x20008
+#define SYM_LT                  0x20009
+#define SYM_GT                  0x2000A
+#define SYM_LEQ                 0x2000B
+#define SYM_GEQ                 0x2000C
+#define SYM_NOT                 0x2000D
+#define SYM_PERFORM_GC          0x2000E
+#define SYM_SELF                0x2000F
+#define SYM_SET_MAILBOX_SIZE    0x20010
+#define SYM_CONS                0x20011
+#define SYM_CAR                 0x20012
+#define SYM_CDR                 0x20013
+#define SYM_LIST                0x20014
+#define SYM_APPEND              0x20015
+#define SYM_UNDEFINE            0x20016
+#define SYM_ARRAY_CREATE        0x20017
+#define SYM_SYMBOL_TO_STRING    0x20018
+#define SYM_STRING_TO_SYMBOL    0x20019
+#define SYM_SYMBOL_TO_UINT      0x2001A
+#define SYM_UINT_TO_SYMBOL      0x2001B
+#define SYM_SET_CAR             0x2001C
+#define SYM_SET_CDR             0x2001D
+#define SYM_SET_IX              0x2001E
+#define SYM_ASSOC               0x2001F
+#define SYM_ACONS               0x20020
+#define SYM_SET_ASSOC           0x20021
+#define SYM_COSSA               0x20022
+#define SYM_IX                  0x20023
+#define SYM_TO_I                0x20024
+#define SYM_TO_I32              0x20025
+#define SYM_TO_U                0x20026
+#define SYM_TO_U32              0x20027
+#define SYM_TO_FLOAT            0x20028
+#define SYM_TO_I64              0x20029
+#define SYM_TO_U64              0x2002A
+#define SYM_TO_DOUBLE           0x2002B
+#define SYM_TO_BYTE             0x2002C
+#define SYM_SHL                 0x2002D
+#define SYM_SHR                 0x2002E
+#define SYM_BITWISE_AND         0x2002F
+#define SYM_BITWISE_OR          0x20030
+#define SYM_BITWISE_XOR         0x20031
+#define SYM_BITWISE_NOT         0x20032
+#define SYM_CUSTOM_DESTRUCT     0x20033
+#define SYM_TYPE_OF             0x20034
+#define SYM_LIST_LENGTH         0x20035
+#define SYM_RANGE               0x20036
+#define SYM_REG_EVENT_HANDLER   0x20037
+#define SYM_TAKE                0x20038
+#define SYM_DROP                0x20039
 
 // Apply funs:
-// Get their arguments in evaluated form.
+// Get their arguments in evaluated form on the stack.
 // Consecutive value symbols for lookup-application
-#define APPLY_FUNS_START          0x150
-#define SYM_SETVAR                0x150
-#define SYM_READ                  0x151
-#define SYM_READ_PROGRAM          0x152
-#define SYM_READ_AND_EVAL_PROGRAM 0x153
-#define SYM_SPAWN                 0x154
-#define SYM_SPAWN_TRAP            0x155
-#define SYM_YIELD                 0x156
-#define SYM_WAIT                  0x157
-#define SYM_EVAL                  0x158
-#define SYM_EVAL_PROGRAM          0x159 
-#define SYM_SEND                  0x15A
-#define SYM_EXIT_OK               0x15B
-#define SYM_EXIT_ERROR            0x15C
-#define SYM_MAP                   0x15D
-#define SYM_REVERSE               0x15E
-#define SYM_FLATTEN               0x15F
-#define SYM_UNFLATTEN             0x160
-#define SYM_KILL                  0x161
-#define APPLY_FUNS_END            0x161
+// apply funs handle their own GC needs and can
+// create continuations.
+#define SYM_SETVAR                0x30000
+#define SYM_READ                  0x30001
+#define SYM_READ_PROGRAM          0x30002
+#define SYM_READ_AND_EVAL_PROGRAM 0x30003
+#define SYM_SPAWN                 0x30004
+#define SYM_SPAWN_TRAP            0x30005
+#define SYM_YIELD                 0x30006
+#define SYM_WAIT                  0x30007
+#define SYM_EVAL                  0x30008
+#define SYM_EVAL_PROGRAM          0x30009
+#define SYM_SEND                  0x3000A
+#define SYM_EXIT_OK               0x3000B
+#define SYM_EXIT_ERROR            0x3000C
+#define SYM_MAP                   0x3000D
+#define SYM_REVERSE               0x3000E
+#define SYM_FLATTEN               0x3000F
+#define SYM_UNFLATTEN             0x30010
+#define SYM_KILL                  0x30011
+#define SYM_SLEEP                 0x30012
+#define SYM_MERGE                 0x30013
+#define SYM_SORT                  0x30014
+#define SYM_REST_ARGS             0x30015
+#define SYM_ROTATE                0x30016
 
-#define FUNDAMENTALS_START 0x20E
-#define SYM_ADD           0x20E
-#define SYM_SUB           0x20F
-#define SYM_MUL           0x210
-#define SYM_DIV           0x211
-#define SYM_MOD           0x212
-#define SYM_EQ            0x213
-#define SYM_NOT_EQ        0x214
-#define SYM_NUMEQ         0x215
-#define SYM_NUM_NOT_EQ    0x216
-#define SYM_LT            0x217
-#define SYM_GT            0x218
-#define SYM_LEQ           0x219
-#define SYM_GEQ           0x21A
-#define SYM_NOT           0x21B
-#define SYM_PERFORM_GC          0x21C
-#define SYM_SELF                0x21D
-#define SYM_SET_MAILBOX_SIZE    0x21E
-#define SYM_CONS                0x21F
-#define SYM_CAR                 0x220
-#define SYM_CDR                 0x221
-#define SYM_LIST                0x222
-#define SYM_APPEND              0x223
-#define SYM_UNDEFINE            0x224
-#define SYM_ARRAY_CREATE        0x225
-#define SYM_SYMBOL_TO_STRING    0x226
-#define SYM_STRING_TO_SYMBOL    0x227
-#define SYM_SYMBOL_TO_UINT      0x228
-#define SYM_UINT_TO_SYMBOL      0x229
-#define SYM_SET_CAR             0x22A
-#define SYM_SET_CDR             0x22B
-#define SYM_SET_IX              0x22C
-#define SYM_ASSOC               0x22D
-#define SYM_ACONS               0x22E
-#define SYM_SET_ASSOC           0x22F
-#define SYM_COSSA               0x230
-#define SYM_IX                  0x231
-#define SYM_TO_I                0x232
-#define SYM_TO_I32              0x233
-#define SYM_TO_U                0x234
-#define SYM_TO_U32              0x235
-#define SYM_TO_FLOAT            0x236
-#define SYM_TO_I64              0x237
-#define SYM_TO_U64              0x238
-#define SYM_TO_DOUBLE           0x239
-#define SYM_TO_BYTE             0x23A
-#define SYM_SHL                 0x23B
-#define SYM_SHR                 0x23C
-#define SYM_BITWISE_AND         0x23D
-#define SYM_BITWISE_OR          0x23E
-#define SYM_BITWISE_XOR         0x23F
-#define SYM_BITWISE_NOT         0x240
-#define SYM_CUSTOM_DESTRUCT     0x241 /* run the destructor of a custom type */
-#define SYM_TYPE_OF             0x242
-#define SYM_LIST_LENGTH         0x243
-#define SYM_RANGE               0x244
-#define SYM_REG_EVENT_HANDLER   0x245
-#define SYM_TAKE                0x246
-#define SYM_DROP                0x247
-#define FUNDAMENTALS_END        0x249
+#define SYMBOL_KIND(X)          ((X) >> 16)
+#define SYMBOL_KIND_SPECIAL     0
+#define SYMBOL_KIND_EXTENSION   1
+#define SYMBOL_KIND_FUNDAMENTAL 2
+#define SYMBOL_KIND_APPFUN      3
 
-#define SPECIAL_SYMBOLS_START    0
-#define SPECIAL_SYMBOLS_END      0xFFFF
-#define EXTENSION_SYMBOLS_START  0x10000
-#define EXTENSION_SYMBOLS_END    0x1FFFF
-#define VARIABLE_SYMBOLS_START   0x20000
-#define VARIABLE_SYMBOLS_END     0x2FFFF
-#define RUNTIME_SYMBOLS_START    0x30000
-#define MAX_SYMBOL_VALUE 0x0FFFFFFF
+#define SYMBOL_IX(X)            ((X) & 0xFFFF)
+
+#define SPECIAL_SYMBOLS_START     0
+#define SPECIAL_SYMBOLS_END       0xFFFF
+#define EXTENSION_SYMBOLS_START   0x10000
+#define EXTENSION_SYMBOLS_END     0x1FFFF
+#define FUNDAMENTAL_SYMBOLS_START 0x20000
+#define FUNDAMENTAL_SYMBOLS_END   0x2FFFF
+#define APPFUN_SYMBOLS_START      0x30000
+#define APPFUN_SYMBOLS_END        0x3FFFF
+#define RUNTIME_SYMBOLS_START     0x40000
+#define MAX_SYMBOL_VALUE          0x0FFFFFFF
+
+// This leaves 268173312 runtime symbols available.
 
 /* ------------------------------------------------------------
    Encoded Symbols
@@ -396,6 +471,11 @@
 #define ENC_SYM_FLATTEN               ENC_SYM(SYM_FLATTEN)
 #define ENC_SYM_UNFLATTEN             ENC_SYM(SYM_UNFLATTEN)
 #define ENC_SYM_KILL                  ENC_SYM(SYM_KILL)
+#define ENC_SYM_SLEEP                 ENC_SYM(SYM_SLEEP)
+#define ENC_SYM_MERGE                 ENC_SYM(SYM_MERGE)
+#define ENC_SYM_SORT                  ENC_SYM(SYM_SORT)
+#define ENC_SYM_REST_ARGS             ENC_SYM(SYM_REST_ARGS)
+#define ENC_SYM_ROTATE                ENC_SYM(SYM_ROTATE)
 
 #define ENC_SYM_ADD           ENC_SYM(SYM_ADD)
 #define ENC_SYM_SUB           ENC_SYM(SYM_SUB)

@@ -17,6 +17,11 @@ OBJ = obj
 SOURCES = $(wildcard *.c)
 EXECS = $(patsubst %.c, %.exe, $(SOURCES))
 
+gc: CCFLAGS += -m32 -DLBM_ALWAYS_GC
+gc: $(EXECS)
+	mv test_lisp_code_cps.exe test_lisp_code_cps
+
+
 all: CCFLAGS += -m32
 all: $(EXECS)
 	mv test_lisp_code_cps.exe test_lisp_code_cps
@@ -33,7 +38,7 @@ allrev: $(EXECS)
 	mv test_lisp_code_cps.exe test_lisp_code_cps
 
 %.exe: %.c $(LISPBM_DEPS)
-	$(CC) $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $< -o $@  -I$(LISPBM)include $(PLATFORM_INCLUDE) -lpthread
+	$(CC) $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $< -o $@  -I$(LISPBM)include $(PLATFORM_INCLUDE) -lpthread -lm
 
 
 clean:

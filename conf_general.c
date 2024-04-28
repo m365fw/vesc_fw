@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "conf_general.h"
 #include "ch.h"
 #include "eeprom.h"
@@ -1818,7 +1821,11 @@ int conf_general_detect_apply_all_foc(float max_power_loss,
 #ifdef HW_HAS_DUAL_MOTORS
 	mcconf->foc_f_zv = 25000.0;
 #else
-	mcconf->foc_f_zv = 40000.0;
+	if (mcconf->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7) {
+		mcconf->foc_f_zv = 25000.0;
+	} else {
+		mcconf->foc_f_zv = 40000.0;
+	}
 #endif
 	mc_interface_set_configuration(mcconf);
 
@@ -2194,3 +2201,5 @@ int conf_general_detect_apply_all_foc_can(bool detect_can, float max_power_loss,
 
 	return res;
 }
+
+#pragma GCC pop_options

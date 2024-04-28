@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "app.h"
 
 #include "ch.h"
@@ -128,14 +131,12 @@ void app_adc_detach_adc(int detach) {
 }
 
 void app_adc_adc1_override(float val) {
-	val = utils_map(val, 0.0, 1.0, 0.0, 3.3);
 	utils_truncate_number(&val, 0, 3.3);
 	adc1_override = val;
 	timeout_reset();
 }
 
 void app_adc_adc2_override(float val) {
-	val = utils_map(val, 0.0, 1.0, 0.0, 3.3);
 	utils_truncate_number(&val, 0, 3.3);
 	adc2_override = val;
 	timeout_reset();
@@ -639,3 +640,5 @@ static THD_FUNCTION(adc_thread, arg) {
 		}
 	}
 }
+
+#pragma GCC pop_options

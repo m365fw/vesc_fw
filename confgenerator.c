@@ -116,6 +116,7 @@ int32_t confgenerator_serialize_mcconf(uint8_t *buffer, const mc_configuration *
 	buffer_append_float16(buffer, conf->foc_hfi_voltage_run, 10, &ind);
 	buffer_append_float16(buffer, conf->foc_hfi_voltage_max, 10, &ind);
 	buffer_append_float16(buffer, conf->foc_hfi_gain, 1000, &ind);
+	buffer_append_float16(buffer, conf->foc_hfi_max_err, 1000, &ind);
 	buffer_append_float16(buffer, conf->foc_hfi_hyst, 100, &ind);
 	buffer_append_float32_auto(buffer, conf->foc_sl_erpm_hfi, &ind);
 	buffer_append_uint16(buffer, conf->foc_hfi_start_samples, &ind);
@@ -140,11 +141,6 @@ int32_t confgenerator_serialize_mcconf(uint8_t *buffer, const mc_configuration *
 	buffer_append_float16(buffer, conf->foc_fw_ramp_time, 1000, &ind);
 	buffer_append_float16(buffer, conf->foc_fw_q_current_factor, 10000, &ind);
 	buffer[ind++] = conf->foc_speed_soure;
-	buffer_append_int16(buffer, conf->gpd_buffer_notify_left, &ind);
-	buffer_append_int16(buffer, conf->gpd_buffer_interpol, &ind);
-	buffer_append_float16(buffer, conf->gpd_current_filter_const, 10000, &ind);
-	buffer_append_float32_auto(buffer, conf->gpd_current_kp, &ind);
-	buffer_append_float32_auto(buffer, conf->gpd_current_ki, &ind);
 	buffer[ind++] = conf->sp_pid_loop_rate;
 	buffer_append_float32_auto(buffer, conf->s_pid_kp, &ind);
 	buffer_append_float32_auto(buffer, conf->s_pid_ki, &ind);
@@ -451,6 +447,7 @@ bool confgenerator_deserialize_mcconf(const uint8_t *buffer, mc_configuration *c
 	conf->foc_hfi_voltage_run = buffer_get_float16(buffer, 10, &ind);
 	conf->foc_hfi_voltage_max = buffer_get_float16(buffer, 10, &ind);
 	conf->foc_hfi_gain = buffer_get_float16(buffer, 1000, &ind);
+	conf->foc_hfi_max_err = buffer_get_float16(buffer, 1000, &ind);
 	conf->foc_hfi_hyst = buffer_get_float16(buffer, 100, &ind);
 	conf->foc_sl_erpm_hfi = buffer_get_float32_auto(buffer, &ind);
 	conf->foc_hfi_start_samples = buffer_get_uint16(buffer, &ind);
@@ -475,11 +472,6 @@ bool confgenerator_deserialize_mcconf(const uint8_t *buffer, mc_configuration *c
 	conf->foc_fw_ramp_time = buffer_get_float16(buffer, 1000, &ind);
 	conf->foc_fw_q_current_factor = buffer_get_float16(buffer, 10000, &ind);
 	conf->foc_speed_soure = buffer[ind++];
-	conf->gpd_buffer_notify_left = buffer_get_int16(buffer, &ind);
-	conf->gpd_buffer_interpol = buffer_get_int16(buffer, &ind);
-	conf->gpd_current_filter_const = buffer_get_float16(buffer, 10000, &ind);
-	conf->gpd_current_kp = buffer_get_float32_auto(buffer, &ind);
-	conf->gpd_current_ki = buffer_get_float32_auto(buffer, &ind);
 	conf->sp_pid_loop_rate = buffer[ind++];
 	conf->s_pid_kp = buffer_get_float32_auto(buffer, &ind);
 	conf->s_pid_ki = buffer_get_float32_auto(buffer, &ind);
@@ -782,6 +774,7 @@ void confgenerator_set_defaults_mcconf(mc_configuration *conf) {
 	conf->foc_hfi_voltage_run = MCCONF_FOC_HFI_VOLTAGE_RUN;
 	conf->foc_hfi_voltage_max = MCCONF_FOC_HFI_VOLTAGE_MAX;
 	conf->foc_hfi_gain = MCCONF_FOC_HFI_GAIN;
+	conf->foc_hfi_max_err = MCCONF_FOC_HFI_MAX_ERR;
 	conf->foc_hfi_hyst = MCCONF_FOC_HFI_HYST;
 	conf->foc_sl_erpm_hfi = MCCONF_FOC_SL_ERPM_HFI;
 	conf->foc_hfi_start_samples = MCCONF_FOC_HFI_START_SAMPLES;
@@ -806,11 +799,6 @@ void confgenerator_set_defaults_mcconf(mc_configuration *conf) {
 	conf->foc_fw_ramp_time = MCCONF_FOC_FW_RAMP_TIME;
 	conf->foc_fw_q_current_factor = MCCONF_FOC_FW_Q_CURRENT_FACTOR;
 	conf->foc_speed_soure = MCCONF_FOC_SPEED_SOURCE;
-	conf->gpd_buffer_notify_left = MCCONF_GPD_BUFFER_NOTIFY_LEFT;
-	conf->gpd_buffer_interpol = MCCONF_GPD_BUFFER_INTERPOL;
-	conf->gpd_current_filter_const = MCCONF_GPD_CURRENT_FILTER_CONST;
-	conf->gpd_current_kp = MCCONF_GPD_CURRENT_KP;
-	conf->gpd_current_ki = MCCONF_GPD_CURRENT_KI;
 	conf->sp_pid_loop_rate = MCCONF_SP_PID_LOOP_RATE;
 	conf->s_pid_kp = MCCONF_S_PID_KP;
 	conf->s_pid_ki = MCCONF_S_PID_KI;

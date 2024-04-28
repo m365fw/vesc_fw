@@ -27,17 +27,18 @@ do not be shy to make contact. Together we can make great stuff happen ;)
 3. Then join in the fun. Lots to do, so little time!
 4. Poke me by mail bo(dot)joel(dot)svensson(whirly-a)gmail(dot)com.
 
-There are also other areas that could use insights and help. Some I can
+There are areas where insights and help would matter greatly. Some I can
 think of are:
 
 1. Running LispBM on system simulators.
 2. LispBM efficiency, compilation, byte-code and real time garbage collection.
-3. Documentation and testing.
-4. Useful extension libraries.
-5. Lisp scriptable home automation.
-6. Lisp scriptable MIDI sequencers.
-7. Lisp scriptable Audio synthesizers.
-8. ...
+3. Code size optimisation. Do more with less, while maintaining performance.
+4. Documentation and testing.
+5. Useful extension libraries.
+6. Lisp scriptable home automation.
+7. Lisp scriptable MIDI sequencers.
+8. Lisp scriptable Audio synthesizers.
+9. ...
 
 ## Getting started 
 
@@ -60,23 +61,23 @@ what we call "extensions" which are C functions that can be called from your Lis
  - Gotchas and caveats [Gotchas and caveats](./doc/gotchas.md).
  - Work in progress [LispBM programming manual](./doc/manual).
  - C code documentation can be found [here](http://svenssonjoel.github.io/lbmdoc/html/index.html).
- - LispBM's internals are documented as a series of [blog posts](http://svenssonjoel.github.io).
+ - LispBM's internals are documented as a series of (now quite outdated) [blog posts](http://svenssonjoel.github.io).
  - There are [demonstrations on YouTube](https://youtube.com/playlist?list=PLtf_3TaqZoDOQqZcB9Yj-R1zS2DWDZ9q9).
 
-### Compile a 64bit binary for linux
+## The LBM REPL
 
-To really experience LispBM one should use it on a microcontroller. The repl
-available for X86 is currently very limited and "hacky". I use this repl as an
-experiment platform while working on the LBM implementation. A more serious attempt
-at a useful desktop/laptop/rpi LispBM repl is work in progress.
+There is an example REPL implementation that runs on X86 32 or 64bit in the `repl` directory.
+The REPL depends on libreadline.
 
-1. Build the repl: `cd experiment_repl` and then `make all64`
 
-2. Run the repl: `./repl`
+**REPL Dependencies for 32Bit executable on 64Bit linux:**
+* libreadline
+* lib32readline
+* gcc-multilib
 
-## Compile a 32bit binary for linux (Requires 32bit libraries. May need something like "multilib" on a 64bit linux)
+On Ubunty you can obtain the depencies by:
+`sudo apt-get install gcc-multilib libreadline-dev lib32readline-dev`
 
-1. Build the repl: `cd experiment_repl` and then `make`
+Then issue command `make` in the repl directory.
 
-2. Run the repl: `./repl`
 

@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "lispif.h"
 #include "lispbm.h"
 
@@ -52,8 +55,6 @@ static const char* functions[] = {
 "(map-rec f (cons (f (car lst) (car ys)) res) (cdr lst) (cdr ys))))))"
 "(map-rec f nil x y)))",
 
-"(defun sleep (seconds) (yield (* seconds 1000000.0)))",
-
 "(defun filter (f lst)"
 "(let ((filter-rec (lambda (f lst ys)"
 "(if (eq lst nil)"
@@ -63,13 +64,6 @@ static const char* functions[] = {
 "(filter-rec f (cdr lst) ys))))))"
 "(filter-rec f lst nil)"
 "))",
-
-"(defun sort (f lst)"
-"(let ((insert (lambda (elt f sorted-lst)"
-"(if (eq sorted-lst nil) (list elt)"
-"(if (f elt (car sorted-lst)) (cons elt sorted-lst)"
-"(cons (car sorted-lst) (insert elt f (cdr sorted-lst))))))))"
-"(if (eq lst nil) nil (insert (car lst) f (sort f (cdr lst))))))",
 
 "(defun str-cmp-asc (a b) (< (str-cmp a b) 0))",
 "(defun str-cmp-dsc (a b) (> (str-cmp a b) 0))",
@@ -125,3 +119,5 @@ bool lispif_vesc_dynamic_loader(const char *str, const char **code) {
 
 	return false;
 }
+
+#pragma GCC pop_options

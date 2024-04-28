@@ -109,19 +109,10 @@ typedef enum {
 	TEMP_SENSOR_DISABLED
 } temp_sensor_type;
 
-// General purpose drive output mode
-typedef enum {
-	GPD_OUTPUT_MODE_NONE = 0,
-	GPD_OUTPUT_MODE_MODULATION,
-	GPD_OUTPUT_MODE_VOLTAGE,
-	GPD_OUTPUT_MODE_CURRENT
-} gpd_output_mode;
-
 typedef enum {
 	MOTOR_TYPE_BLDC = 0,
 	MOTOR_TYPE_DC,
-	MOTOR_TYPE_FOC,
-	MOTOR_TYPE_GPD
+	MOTOR_TYPE_FOC
 } mc_motor_type;
 
 // FOC current controller decoupling mode.
@@ -238,7 +229,8 @@ typedef enum {
 	DEBUG_SAMPLING_TRIGGER_FAULT,
 	DEBUG_SAMPLING_TRIGGER_START_NOSEND,
 	DEBUG_SAMPLING_TRIGGER_FAULT_NOSEND,
-	DEBUG_SAMPLING_SEND_LAST_SAMPLES
+	DEBUG_SAMPLING_SEND_LAST_SAMPLES,
+	DEBUG_SAMPLING_SEND_SINGLE_SAMPLE
 } debug_sampling_mode;
 
 typedef enum {
@@ -300,6 +292,7 @@ typedef struct {
 	float temps_adc[50];
 	float temp_ic;
 	float temp_hum;
+	float pressure;
 	float hum;
 	float temp_max_cell;
 	float soc;
@@ -467,6 +460,7 @@ typedef struct {
 	float foc_hfi_voltage_run;
 	float foc_hfi_voltage_max;
 	float foc_hfi_gain;
+	float foc_hfi_max_err;
 	float foc_hfi_hyst;
 	float foc_sl_erpm_hfi;
 	uint16_t foc_hfi_start_samples;
@@ -486,13 +480,6 @@ typedef struct {
 	float foc_fw_ramp_time;
 	float foc_fw_q_current_factor;
 	FOC_SPEED_SRC foc_speed_soure;
-
-	// GPDrive
-	int gpd_buffer_notify_left;
-	int gpd_buffer_interpol;
-	float gpd_current_filter_const;
-	float gpd_current_kp;
-	float gpd_current_ki;
 
 	PID_RATE sp_pid_loop_rate;
 
@@ -1094,6 +1081,13 @@ typedef enum {
 	COMM_LOG_DATA_F64						= 151,
 
 	COMM_LISP_RMSG							= 152,
+
+	//Placeholders for pinlock commands
+	//COMM_PINLOCK1							= 153,
+	//COMM_PINLOCK2							= 154,
+	//COMM_PINLOCK3							= 155,
+
+	COMM_SHUTDOWN							= 156,
 } COMM_PACKET_ID;
 
 // CAN commands

@@ -1,5 +1,5 @@
 /*
-    Copyright 2018, 2021 2022 Joel Svensson  svenssonjoel@yahoo.se
+    Copyright 2018, 2021, 2022, 2024 Joel Svensson  svenssonjoel@yahoo.se
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,9 +21,12 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
+
 #include <lbm_memory.h>
 #include <heap.h>
 #include "symrepr.h"
+#include "extensions.h"
+#include "lbm_utils.h"
 
 #define NUM_SPECIAL_SYMBOLS (sizeof(special_symbols) / sizeof(special_sym))
 #define NAME   0
@@ -49,8 +52,6 @@ special_sym const special_symbols[] =  {
   {"read"       , SYM_READ},
   {"read-program" , SYM_READ_PROGRAM},
   {"read-eval-program", SYM_READ_AND_EVAL_PROGRAM},
-  //{"comma"      , SYM_COMMA},   // should not be accessible to programmer
-  //{"splice"     , SYM_COMMAAT},
   {"match"        , SYM_MATCH},
   {"_"            , SYM_DONTCARE},
   {"send"         , SYM_SEND},
@@ -72,7 +73,13 @@ special_sym const special_symbols[] =  {
   {"flatten"      , SYM_FLATTEN},
   {"unflatten"    , SYM_UNFLATTEN},
   {"kill"         , SYM_KILL},
+  {"sleep"        , SYM_SLEEP},
+  {"merge"        , SYM_MERGE},
+  {"sort"         , SYM_SORT},
   {"gc"           , SYM_PERFORM_GC},
+  {"loop"         , SYM_LOOP},
+  {"rest-args"    , SYM_REST_ARGS},
+  {"rotate"       , SYM_ROTATE},
 
   // pattern matching
   {"?"          , SYM_MATCH_ANY},
@@ -224,23 +231,28 @@ special_sym const special_symbols[] =  {
 
 static lbm_uint *symlist = NULL;
 static lbm_uint next_symbol_id = RUNTIME_SYMBOLS_START;
-static lbm_uint next_extension_symbol_id = EXTENSION_SYMBOLS_START;
-static lbm_uint next_variable_symbol_id = VARIABLE_SYMBOLS_START;
-
 static lbm_uint symbol_table_size_list = 0;
 static lbm_uint symbol_table_size_list_flash = 0;
 static lbm_uint symbol_table_size_strings = 0;
 static lbm_uint symbol_table_size_strings_flash = 0;
 
+lbm_value symbol_x = ENC_SYM_NIL;
+lbm_value symbol_y = ENC_SYM_NIL;
+
 int lbm_symrepr_init(void) {
   symlist = NULL;
   next_symbol_id = RUNTIME_SYMBOLS_START;
-  next_extension_symbol_id = EXTENSION_SYMBOLS_START;
-  next_variable_symbol_id = VARIABLE_SYMBOLS_START;
   symbol_table_size_list = 0;
   symbol_table_size_list_flash = 0;
   symbol_table_size_strings = 0;
   symbol_table_size_strings_flash = 0;
+
+  lbm_uint x = 0;
+  lbm_uint y = 0;
+  lbm_add_symbol("x", &x);
+  lbm_add_symbol("y", &y);
+  symbol_x = lbm_enc_sym(x);
+  symbol_y = lbm_enc_sym(y);
   return 1;
 }
 
@@ -267,14 +279,40 @@ const char *lookup_symrepr_name_memory(lbm_uint id) {
 
 // Lookup symbol name given a symbol id
 const char *lbm_get_name_by_symbol(lbm_uint id) {
-  if (id < SPECIAL_SYMBOLS_END) {
+  lbm_uint sym_kind = SYMBOL_KIND(id);
+  switch (sym_kind) {
+  case SYMBOL_KIND_SPECIAL:  /* fall through */
+  case SYMBOL_KIND_FUNDAMENTAL:
+  case SYMBOL_KIND_APPFUN:
     for (unsigned int i = 0; i < NUM_SPECIAL_SYMBOLS; i ++) {
       if (id == special_symbols[i].id) {
         return (special_symbols[i].name);
       }
     }
+    return NULL;
+    break;
+  case SYMBOL_KIND_EXTENSION: {
+    lbm_uint ext_id = id - EXTENSION_SYMBOLS_START;
+    if (ext_id < lbm_get_max_extensions()) {
+      return extension_table[ext_id].name;
+    }
+    return NULL;
+  } break;
+  default:
+    return lookup_symrepr_name_memory(id);
   }
-  return lookup_symrepr_name_memory(id);
+}
+
+lbm_uint *lbm_get_symbol_list_entry_by_name(char *name) {
+  lbm_uint *curr = symlist;
+  while (curr) {
+    char *str = (char*)curr[NAME];
+    if (str_eq(name, str)) {
+      return (lbm_uint *)curr;
+    }
+    curr = (lbm_uint*)curr[NEXT];
+  }
+  return NULL;
 }
 
 // Lookup symbol id given symbol name
@@ -282,8 +320,16 @@ int lbm_get_symbol_by_name(char *name, lbm_uint* id) {
 
   // loop through special symbols
   for (unsigned int i = 0; i < NUM_SPECIAL_SYMBOLS; i ++) {
-    if (strcmp(name, special_symbols[i].name) == 0) {
+    if (str_eq(name, (char *)special_symbols[i].name)) {
       *id = special_symbols[i].id;
+      return 1;
+    }
+   }
+
+  // loop through extensions
+  for (unsigned int i = 0; i < lbm_get_max_extensions(); i ++) {
+    if (extension_table[i].name && str_eq(name, extension_table[i].name)) {
+      *id = EXTENSION_SYMBOLS_START + i;
       return 1;
     }
   }
@@ -291,7 +337,7 @@ int lbm_get_symbol_by_name(char *name, lbm_uint* id) {
   lbm_uint *curr = symlist;
   while (curr) {
     char *str = (char*)curr[NAME];
-    if (strcmp(name, str) == 0) {
+    if (str_eq(name, str)) {
       *id = curr[ID];
       return 1;
     }
@@ -302,51 +348,48 @@ int lbm_get_symbol_by_name(char *name, lbm_uint* id) {
 
 extern lbm_flash_status lbm_write_const_array_padded(uint8_t *data, lbm_uint n, lbm_uint *res);
 
-static bool store_symbol_name_base(char *name, lbm_uint *res, bool flash) {
+
+static bool store_symbol_name_flash(char *name, lbm_uint *res) {
   size_t n = strlen(name) + 1;
   if (n == 1) return 0; // failure if empty symbol
 
-  char *symbol_name_storage = NULL;
   lbm_uint alloc_size;
   if (n % sizeof(lbm_uint) == 0) {
     alloc_size = n/(sizeof(lbm_uint));
   } else {
     alloc_size = (n/(sizeof(lbm_uint))) + 1;
   }
-  if (flash) {
-    lbm_uint symbol_addr = 0;
-    lbm_flash_status s = lbm_write_const_array_padded((uint8_t*)name, n, &symbol_addr);
-    if (s != LBM_FLASH_WRITE_OK || symbol_addr == 0) {
-      return false;
-    }
-    symbol_table_size_strings_flash += alloc_size;
-    *res = symbol_addr;
-    return true;
-  } else {
-    symbol_name_storage = (char *)lbm_memory_allocate(alloc_size);
-    if (symbol_name_storage == NULL) return false;
-    symbol_table_size_strings += alloc_size;
-    strcpy(symbol_name_storage, name);
-    *res = (lbm_uint)symbol_name_storage;
-    return true;
+
+  lbm_uint symbol_addr = 0;
+  lbm_flash_status s = lbm_write_const_array_padded((uint8_t*)name, n, &symbol_addr);
+  if (s != LBM_FLASH_WRITE_OK || symbol_addr == 0) {
+    return false;
   }
+  symbol_table_size_strings_flash += alloc_size;
+  *res = symbol_addr;
+  return true;
 }
 
-static bool store_symbol_name(char *name, lbm_uint *res) {
-  return store_symbol_name_base(name, res, false);
-}
+static bool add_symbol_to_symtab(char* name, lbm_uint id) {
+  size_t n = strlen(name) + 1;
+  if (n == 1) return 0; // failure if empty symbol
 
-static bool store_symbol_name_flash(char *name, lbm_uint *res) {
-  return store_symbol_name_base(name, res, true);
-}
+  lbm_uint alloc_size;
+  if (n % sizeof(lbm_uint) == 0) {
+    alloc_size = n/(sizeof(lbm_uint));
+  } else {
+    alloc_size = (n/(sizeof(lbm_uint))) + 1;
+  }
 
-static bool add_symbol_to_symtab(lbm_uint name, lbm_uint id) {
-  lbm_uint *m = lbm_memory_allocate(3);
+  lbm_uint *storage = lbm_memory_allocate(alloc_size + 3);
+  if (storage == NULL) return false;
+  strncpy(((char*)storage) + 12, name, n);  
+  lbm_uint *m = storage;
 
   if (m == NULL) return false;
 
   symbol_table_size_list += 3;
-  m[NAME] = name;
+  m[NAME] = (lbm_uint)&storage[3];
   m[NEXT] = (lbm_uint) symlist;
   symlist = m;
   m[ID] =id;
@@ -373,9 +416,7 @@ static int lbm_add_symbol_base(char *name, lbm_uint *id, bool flash) {
     if (!store_symbol_name_flash(name, &symbol_name_storage)) return 0;
     if (!add_symbol_to_symtab_flash(symbol_name_storage, next_symbol_id)) return 0;
   } else {
-    if (!store_symbol_name(name, &symbol_name_storage)) return 0;
-    if (!add_symbol_to_symtab(symbol_name_storage, next_symbol_id)) {
-      lbm_memory_free((lbm_uint*)symbol_name_storage);
+    if (!add_symbol_to_symtab(name, next_symbol_id)) {
       return 0;
     }
   }
@@ -392,13 +433,14 @@ int lbm_add_symbol_flash(char *name, lbm_uint* id) {
 }
 
 int lbm_add_symbol_const(char *name, lbm_uint* id) {
-
-  if (!add_symbol_to_symtab((lbm_uint)name, next_symbol_id)) {
-    return 0;
-  }
-
+  lbm_uint *m = lbm_memory_allocate(3);
+  if (m == NULL) return 0;
+  symbol_table_size_list += 3;
+  m[NAME] = (lbm_uint) name;
+  m[NEXT] = (lbm_uint) symlist;
+  symlist = m;
+  m[ID] = next_symbol_id;
   *id = next_symbol_id ++;
-
   return 1;
 }
 
@@ -408,64 +450,6 @@ int lbm_str_to_symbol(char *name, lbm_uint *sym_id) {
   else if (lbm_add_symbol(name, sym_id))
     return 1;
   return 0;
-}
-
-int lbm_add_variable_symbol(char *name, lbm_uint* id) {
-
-  if (next_variable_symbol_id >= VARIABLE_SYMBOLS_END) return 0;
-  lbm_uint symbol_name_storage;
-  if (!store_symbol_name(name, &symbol_name_storage)) return 0;
-
-  if (!add_symbol_to_symtab(symbol_name_storage, next_variable_symbol_id)) {
-    lbm_memory_free((lbm_uint*)symbol_name_storage);
-    return 0;
-  }
-
-  *id = next_variable_symbol_id ++;
-
-  return 1;
-}
-
-int lbm_add_variable_symbol_const(char *name, lbm_uint* id) {
-
-  if (next_variable_symbol_id >= VARIABLE_SYMBOLS_END) return 0;
-
-  if (!add_symbol_to_symtab((lbm_uint)name, next_variable_symbol_id)) {
-    return 0;
-  }
-
-  *id = next_variable_symbol_id ++;
-
-  return 1;
-}
-
-int lbm_add_extension_symbol(char *name, lbm_uint* id) {
-
-  if (next_extension_symbol_id >= EXTENSION_SYMBOLS_END) return 0;
-  lbm_uint symbol_name_storage;
-  if (!store_symbol_name(name, &symbol_name_storage)) return 0;
-
-  if (!add_symbol_to_symtab(symbol_name_storage, next_extension_symbol_id)) {
-    lbm_memory_free((lbm_uint*)symbol_name_storage);
-    return 0;
-  }
-
-  *id = next_extension_symbol_id ++;
-
-  return 1;
-}
-
-int lbm_add_extension_symbol_const(char *name, lbm_uint* id) {
-
-  if (next_extension_symbol_id >= EXTENSION_SYMBOLS_END) return 0;
-
-  if (!add_symbol_to_symtab((lbm_uint)name, next_extension_symbol_id)) {
-    return 0;
-  }
-
-  *id = next_extension_symbol_id ++;
-
-  return 1;
 }
 
 lbm_uint lbm_get_symbol_table_size(void) {
@@ -486,6 +470,11 @@ lbm_uint lbm_get_symbol_table_size_names_flash(void) {
   return symbol_table_size_strings_flash * sizeof(lbm_uint);
 }
 
-int lbm_get_num_variables(void) {
-  return (int)next_variable_symbol_id - VARIABLE_SYMBOLS_START;
+bool lbm_symbol_in_flash(char *str) {
+  return !lbm_memory_ptr_inside((lbm_uint*)str);
+}
+
+bool lbm_symbol_list_entry_in_flash(char *str) {
+  lbm_uint *entry = lbm_get_symbol_list_entry_by_name(str);
+  return (entry == NULL || !lbm_memory_ptr_inside(entry));
 }

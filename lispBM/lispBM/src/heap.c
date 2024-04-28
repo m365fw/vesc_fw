@@ -176,7 +176,7 @@ lbm_value lbm_enc_double(double x) {
   return res;
 #else
   lbm_uint t;
-  memcpy(&t, &x, sizeof(lbm_float));
+  memcpy(&t, &x, sizeof(double));
   lbm_value f = lbm_cons(t, lbm_enc_sym(SYM_RAW_F_TYPE));
   if (lbm_type_of(f) == LBM_TYPE_SYMBOL) return f;
   return lbm_set_ptr_type(f, LBM_TYPE_DOUBLE);
@@ -264,26 +264,26 @@ lbm_uint lbm_dec_custom(lbm_value val) {
   return res;
 }
 
-char lbm_dec_as_char(lbm_value a) {
+uint8_t lbm_dec_as_char(lbm_value a) {
   switch (lbm_type_of_functional(a)) {
   case LBM_TYPE_CHAR:
-    return (char) lbm_dec_char(a);
+    return (uint8_t) lbm_dec_char(a);
   case LBM_TYPE_I:
-    return (char) lbm_dec_i(a);
+    return (uint8_t) lbm_dec_i(a);
   case LBM_TYPE_U:
-    return (char) lbm_dec_u(a);
+    return (uint8_t) lbm_dec_u(a);
   case LBM_TYPE_I32:
-    return (char) lbm_dec_i32(a);
+    return (uint8_t) lbm_dec_i32(a);
   case LBM_TYPE_U32:
-    return (char) lbm_dec_u32(a);
+    return (uint8_t) lbm_dec_u32(a);
   case LBM_TYPE_FLOAT:
-    return (char)lbm_dec_float(a);
+    return (uint8_t)lbm_dec_float(a);
   case LBM_TYPE_I64:
-    return (char) lbm_dec_i64(a);
+    return (uint8_t) lbm_dec_i64(a);
   case LBM_TYPE_U64:
-    return (char) lbm_dec_u64(a);
+    return (uint8_t) lbm_dec_u64(a);
   case LBM_TYPE_DOUBLE:
-    return (char) lbm_dec_double(a);
+    return (uint8_t) lbm_dec_double(a);
   }
   return 0;
 }
@@ -311,29 +311,6 @@ uint32_t lbm_dec_as_u32(lbm_value a) {
   return 0;
 }
 
-uint64_t lbm_dec_as_u64(lbm_value a) {
-  switch (lbm_type_of_functional(a)) {
-  case LBM_TYPE_CHAR:
-    return (uint64_t) lbm_dec_char(a);
-  case LBM_TYPE_I:
-    return (uint64_t) lbm_dec_i(a);
-  case LBM_TYPE_U:
-    return lbm_dec_u(a);
-  case LBM_TYPE_I32: /* fall through */
-  case LBM_TYPE_U32:
-    return (uint64_t) lbm_dec_u32(a);
-  case LBM_TYPE_FLOAT:
-    return (uint64_t)lbm_dec_float(a);
-  case LBM_TYPE_I64:
-  case LBM_TYPE_U64:
-    return (uint64_t) lbm_dec_u64(a);
-  case LBM_TYPE_DOUBLE:
-    return (uint64_t) lbm_dec_double(a);
-  }
-  return 0;
-}
-
-
 int32_t lbm_dec_as_i32(lbm_value a) {
   switch (lbm_type_of_functional(a)) {
   case LBM_TYPE_CHAR:
@@ -343,8 +320,9 @@ int32_t lbm_dec_as_i32(lbm_value a) {
   case LBM_TYPE_U:
     return (int32_t) lbm_dec_u(a);
   case LBM_TYPE_I32:
-  case LBM_TYPE_U32:
     return (int32_t) lbm_dec_i32(a);
+  case LBM_TYPE_U32:
+    return (int32_t) lbm_dec_u32(a);
   case LBM_TYPE_FLOAT:
     return (int32_t) lbm_dec_float(a);
   case LBM_TYPE_I64:
@@ -367,19 +345,44 @@ int64_t lbm_dec_as_i64(lbm_value a) {
   case LBM_TYPE_U:
     return (int64_t) lbm_dec_u(a);
   case LBM_TYPE_I32:
-  case LBM_TYPE_U32:
     return (int64_t) lbm_dec_i32(a);
+  case LBM_TYPE_U32:
+    return (int64_t) lbm_dec_u32(a);
   case LBM_TYPE_FLOAT:
     return (int64_t) lbm_dec_float(a);
   case LBM_TYPE_I64:
-  case LBM_TYPE_U64:
     return (int64_t) lbm_dec_i64(a);
+  case LBM_TYPE_U64:
+    return (int64_t) lbm_dec_u64(a);
   case LBM_TYPE_DOUBLE:
     return (int64_t) lbm_dec_double(a);
   }
   return 0;
 }
 
+uint64_t lbm_dec_as_u64(lbm_value a) {
+  switch (lbm_type_of_functional(a)) {
+  case LBM_TYPE_CHAR:
+    return (uint64_t) lbm_dec_char(a);
+  case LBM_TYPE_I:
+    return (uint64_t) lbm_dec_i(a);
+  case LBM_TYPE_U:
+    return lbm_dec_u(a);
+  case LBM_TYPE_I32:
+    return (uint64_t) lbm_dec_i32(a);
+  case LBM_TYPE_U32:
+    return (uint64_t) lbm_dec_u32(a);
+  case LBM_TYPE_FLOAT:
+    return (uint64_t)lbm_dec_float(a);
+  case LBM_TYPE_I64:
+    return (uint64_t) lbm_dec_i64(a);
+  case LBM_TYPE_U64:
+    return (uint64_t) lbm_dec_u64(a);
+  case LBM_TYPE_DOUBLE:
+    return (uint64_t) lbm_dec_double(a);
+  }
+  return 0;
+}
 
 float lbm_dec_as_float(lbm_value a) {
 
@@ -429,17 +432,6 @@ double lbm_dec_as_double(lbm_value a) {
     return (double) lbm_dec_double(a);
   }
   return 0;
-}
-/****************************************************/
-/* IS                                               */
-
-bool lbm_is_number(lbm_value x) {
-  lbm_uint t = lbm_type_of(x);
-#ifndef LBM64
-  return (t & 0xC || t & 0x08000000);
-#else
-  return (t & 0x1C || t & 0x0800000000000000);
-#endif
 }
 
 /****************************************************/
@@ -507,7 +499,7 @@ int lbm_heap_init(lbm_cons_t *addr, lbm_uint num_cells,
 
   lbm_uint *gc_stack_storage = (lbm_uint*)lbm_malloc(gc_stack_size * sizeof(lbm_uint));
   if (gc_stack_storage == NULL) return 0;
-  
+
   heap_init_state(addr, num_cells,
                   gc_stack_storage, gc_stack_size);
 
@@ -521,32 +513,19 @@ lbm_uint lbm_heap_num_free(void) {
 }
 
 lbm_value lbm_heap_allocate_cell(lbm_type ptr_type, lbm_value car, lbm_value cdr) {
-
   lbm_value res;
-
   // it is a ptr replace freelist with cdr of freelist;
   res = lbm_heap_state.freelist;
-
   if (lbm_type_of(res) == LBM_TYPE_CONS) {
-    lbm_cons_t *rc = lbm_ref_cell(res);
-    lbm_heap_state.freelist = rc->cdr;
-
+    lbm_uint heap_ix = lbm_dec_ptr(res);
+    lbm_heap_state.freelist = lbm_heap_state.heap[heap_ix].cdr;
     lbm_heap_state.num_alloc++;
-
-    rc->car = car;
-    rc->cdr = cdr;
-
+    lbm_heap_state.heap[heap_ix].car = car;
+    lbm_heap_state.heap[heap_ix].cdr = cdr;
     res = lbm_set_ptr_type(res, ptr_type);
     return res;
   }
-  else if ((lbm_type_of(lbm_heap_state.freelist) == LBM_TYPE_SYMBOL) &&
-           (lbm_dec_sym(lbm_heap_state.freelist) == SYM_NIL)) {
-    // all is as it should be (but no free cells)
-    return ENC_SYM_MERROR;
-  }
-  else {
-    return ENC_SYM_FATAL_ERROR;
-  }
+  return ENC_SYM_MERROR;
 }
 
 lbm_value lbm_heap_allocate_list(lbm_uint n) {
@@ -691,6 +670,7 @@ void lbm_gc_mark_phase(lbm_value root) {
 }
 
 #else
+extern eval_context_t *ctx_running;
 void lbm_gc_mark_phase(lbm_value root) {
 
   lbm_stack_t *s = &lbm_heap_state.gc_stack;
@@ -701,27 +681,33 @@ void lbm_gc_mark_phase(lbm_value root) {
     lbm_pop(s, &curr);
 
   mark_shortcut:
-    if (!lbm_is_ptr(curr)) {
+    if (!lbm_is_ptr(curr) || (curr & LBM_PTR_TO_CONSTANT_BIT)) {
       continue;
     }
 
-    if (curr & LBM_PTR_TO_CONSTANT_BIT) {
-      // Go back and pop next root.
-      // Constant values can only refer to non-constants by name.
-      continue;
-    }
-    lbm_cons_t *cell = lbm_ref_cell(curr);
+    lbm_cons_t *cell = &lbm_heap_state.heap[lbm_dec_ptr(curr)];
 
-    lbm_uint gc_mark = lbm_get_gc_mark(cell->cdr);
-    if (gc_mark) continue;
-    lbm_heap_state.gc_marked ++;
+    if (lbm_get_gc_mark(cell->cdr))  continue;
     cell->cdr = lbm_set_gc_mark(cell->cdr);
+    lbm_heap_state.gc_marked ++;
 
     lbm_value t_ptr = lbm_type_of(curr);
 
     if (t_ptr >= LBM_NON_CONS_POINTER_TYPE_FIRST &&
         t_ptr <= LBM_NON_CONS_POINTER_TYPE_LAST) continue;
 
+    if (cell->car == ENC_SYM_CONT) {
+      lbm_array_header_t *arr = (lbm_array_header_t*)lbm_car(cell->cdr);
+      lbm_value *arrdata = (lbm_value *)arr->data;
+      for (lbm_uint i = 0; i < arr->size / 4; i ++) {
+        if (lbm_is_ptr(arrdata[i]) &&
+            !((arrdata[i] & LBM_CONTINUATION_INTERNAL) == LBM_CONTINUATION_INTERNAL)) {
+          if (!lbm_push (s, arrdata[i])) {
+            lbm_critical_error();
+          }
+        }
+      }
+    }
     if (lbm_is_ptr(cell->cdr)) {
       if (!lbm_push(s, cell->cdr)) {
         lbm_critical_error();
@@ -733,35 +719,6 @@ void lbm_gc_mark_phase(lbm_value root) {
   }
 }
 #endif
-
-// The free list should be a "proper list"
-// Using a while loop to traverse over the cdrs
-int lbm_gc_mark_freelist(void) {
-
-  lbm_value curr;
-  lbm_cons_t *t;
-  lbm_value fl = lbm_heap_state.freelist;
-
-  if (!lbm_is_ptr(fl)) {
-    if (lbm_type_of(fl) == LBM_TYPE_SYMBOL &&
-        fl == ENC_SYM_NIL){
-      return 1; // Nothing to mark here
-    } else {
-      return 0;
-    }
-  }
-
-  curr = fl;
-  while (lbm_is_ptr(curr)){
-    t = lbm_ref_cell(curr);
-    t->cdr = lbm_set_gc_mark(t->cdr);
-    curr = t->cdr;
-
-    lbm_heap_state.gc_marked ++;
-  }
-
-  return 1;
-}
 
 //Environments are proper lists with a 2 element list stored in each car.
 void lbm_gc_mark_env(lbm_value env) {
@@ -854,7 +811,6 @@ int lbm_gc_sweep_phase(void) {
       lbm_heap_state.gc_recovered ++;
     }
   }
-
   return 1;
 }
 
@@ -1044,13 +1000,16 @@ lbm_value lbm_list_destructive_reverse(lbm_value list) {
 }
 
 
-lbm_value lbm_list_copy(int m, lbm_value list) {
+lbm_value lbm_list_copy(int *m, lbm_value list) {
   lbm_value curr = list;
   lbm_uint n = lbm_list_length(list);
   lbm_uint copy_n = n;
-  if (m >= 0 && (lbm_uint)m < n) {
-    copy_n = (lbm_uint)m;
+  if (*m >= 0 && (lbm_uint)*m < n) {
+    copy_n = (lbm_uint)*m;
+  } else if (*m == -1) {
+    *m = (int)n; // TODO: smaller range in target variable.
   }
+  if (copy_n == 0) return ENC_SYM_NIL;
   lbm_uint new_list = lbm_heap_allocate_list(copy_n);
   if (lbm_is_symbol(new_list)) return new_list;
   lbm_value curr_targ = new_list;
@@ -1093,6 +1052,28 @@ lbm_value lbm_list_drop(unsigned int n, lbm_value ls) {
   }
   return curr;
 }
+
+lbm_value lbm_index_list(lbm_value l, int32_t n) {
+  lbm_value curr = l;
+
+  if (n < 0) {
+    int32_t len = (int32_t)lbm_list_length(l);
+    n = len + n;
+    if (n < 0) return ENC_SYM_NIL;
+  }
+
+  while (lbm_is_cons(curr) &&
+          n > 0) {
+    curr = lbm_cdr(curr);
+    n --;
+  }
+  if (lbm_is_cons(curr)) {
+    return lbm_car(curr);
+  } else {
+    return ENC_SYM_NIL;
+  }
+}
+
 
 
 // Arrays are part of the heap module because their lifespan is managed
@@ -1137,7 +1118,6 @@ int lbm_heap_allocate_array(lbm_value *res, lbm_uint size){
 
 // Convert a C array into an lbm_array.
 // if the array is in LBM_MEMORY, the lifetime will be managed by the GC.
-// TODO: Use lbm_malloc for header data
 int lbm_lift_array(lbm_value *value, char *data, lbm_uint num_elt) {
 
   lbm_array_header_t *array = NULL;
@@ -1150,13 +1130,15 @@ int lbm_lift_array(lbm_value *value, char *data, lbm_uint num_elt) {
 
   array = (lbm_array_header_t*)lbm_malloc(sizeof(lbm_array_header_t));
 
-  if (array == NULL) return 0;
+  if (array == NULL) {
+    *value = ENC_SYM_MERROR;
+    return 0;
+  }
 
   array->data = (lbm_uint*)data;
   array->size = num_elt;
 
   lbm_set_car(cell, (lbm_uint)array);
-  //lbm_set_cdr(cell, lbm_enc_sym(SYM_ARRAY_TYPE));
 
   cell = lbm_set_ptr_type(cell, LBM_TYPE_ARRAY);
   *value = cell;
@@ -1166,7 +1148,7 @@ int lbm_lift_array(lbm_value *value, char *data, lbm_uint num_elt) {
 lbm_int lbm_heap_array_get_size(lbm_value arr) {
 
   int r = -1;
-  if (lbm_is_array_rw(arr)) {
+  if (lbm_is_array_r(arr)) {
     lbm_array_header_t *header = (lbm_array_header_t*)lbm_car(arr);
     if (header == NULL) {
       return r;
@@ -1176,7 +1158,19 @@ lbm_int lbm_heap_array_get_size(lbm_value arr) {
   return r;
 }
 
-uint8_t *lbm_heap_array_get_data(lbm_value arr) {
+const uint8_t *lbm_heap_array_get_data_ro(lbm_value arr) {
+  uint8_t *r = NULL;
+  if (lbm_is_array_r(arr)) {
+    lbm_array_header_t *header = (lbm_array_header_t*)lbm_car(arr);
+    if (header == NULL) {
+      return r;
+    }
+    r = (uint8_t*)header->data;
+  }
+  return r;
+}
+
+uint8_t *lbm_heap_array_get_data_rw(lbm_value arr) {
   uint8_t *r = NULL;
   if (lbm_is_array_rw(arr)) {
     lbm_array_header_t *header = (lbm_array_header_t*)lbm_car(arr);

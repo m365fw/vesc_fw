@@ -17,12 +17,15 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "commands.h"
 #include "ch.h"
 #include "hal.h"
 #include "mc_interface.h"
 #include "stm32f4xx_conf.h"
-#include "servo_simple.h"
+#include "pwm_servo.h"
 #include "buffer.h"
 #include "terminal.h"
 #include "hw.h"
@@ -38,7 +41,6 @@
 #include "packet.h"
 #include "encoder/encoder.h"
 #include "nrf_driver.h"
-#include "gpdrive.h"
 #include "confgenerator.h"
 #include "imu.h"
 #include "shutdown.h"
@@ -286,6 +288,8 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		strcpy((char*)(send_buffer + ind), FW_NAME);
 		ind += strlen(FW_NAME) + 1;
 
+		buffer_append_uint32(send_buffer, main_calc_hw_crc(), &ind);
+
 		fw_version_sent_cnt++;
 
 		reply_func(send_buffer, ind);
@@ -530,7 +534,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 
 	case COMM_SET_SERVO_POS: {
 		int32_t ind = 0;
-		servo_simple_set_output(buffer_get_float16(data, 1000.0, &ind));
+		pwm_servo_set_servo_out(buffer_get_float16(data, 1000.0, &ind));
 	} break;
 
 	case COMM_SET_MCCONF: {
@@ -770,61 +774,6 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		send_buffer[ind++] = packet_id;
 		send_buffer[ind++] = NRF_PAIR_STARTED;
 		reply_func(send_buffer, ind);
-	} break;
-
-	case COMM_GPD_SET_FSW: {
-		timeout_reset();
-		int32_t ind = 0;
-		gpdrive_set_switching_frequency((float)buffer_get_int32(data, &ind));
-	} break;
-
-	case COMM_GPD_BUFFER_SIZE_LEFT: {
-		int32_t ind = 0;
-		uint8_t send_buffer[50];
-		send_buffer[ind++] = COMM_GPD_BUFFER_SIZE_LEFT;
-		buffer_append_int32(send_buffer, gpdrive_buffer_size_left(), &ind);
-		reply_func(send_buffer, ind);
-	} break;
-
-	case COMM_GPD_FILL_BUFFER: {
-		timeout_reset();
-		int32_t ind = 0;
-		while (ind < (int)len) {
-			gpdrive_add_buffer_sample(buffer_get_float32_auto(data, &ind));
-		}
-	} break;
-
-	case COMM_GPD_OUTPUT_SAMPLE: {
-		timeout_reset();
-		int32_t ind = 0;
-		gpdrive_output_sample(buffer_get_float32_auto(data, &ind));
-	} break;
-
-	case COMM_GPD_SET_MODE: {
-		timeout_reset();
-		int32_t ind = 0;
-		gpdrive_set_mode(data[ind++]);
-	} break;
-
-	case COMM_GPD_FILL_BUFFER_INT8: {
-		timeout_reset();
-		int32_t ind = 0;
-		while (ind < (int)len) {
-			gpdrive_add_buffer_sample_int((int8_t)data[ind++]);
-		}
-	} break;
-
-	case COMM_GPD_FILL_BUFFER_INT16: {
-		timeout_reset();
-		int32_t ind = 0;
-		while (ind < (int)len) {
-			gpdrive_add_buffer_sample_int(buffer_get_int16(data, &ind));
-		}
-	} break;
-
-	case COMM_GPD_SET_BUFFER_INT_SCALE: {
-		int32_t ind = 0;
-		gpdrive_set_buffer_int_scale(buffer_get_float32_auto(data, &ind));
 	} break;
 
 	case COMM_GET_VALUES_SETUP:
@@ -1442,7 +1391,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 
 #ifdef USE_LISPBM
 		if (packet_id == COMM_LISP_ERASE_CODE) {
-			lispif_restart(false, false);
+			lispif_restart(false, false, false);
 		}
 #endif
 
@@ -1619,6 +1568,26 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 	case COMM_SET_CUSTOM_CONFIG:
 	case COMM_GET_CUSTOM_CONFIG_XML: {
 		conf_custom_process_cmd(data - 1, len + 1, reply_func);
+	} break;
+
+
+	case COMM_SHUTDOWN: {
+		int ind = 0;
+		int force = data[ind++];
+		if ((fabsf(mc_interface_get_rpm()) > 100) && (force != 1)) {
+			// Don't allow shutdown/restart while riding, unless force == 1
+			break;
+		}
+
+		int is_restart = data[ind++];
+		if (is_restart == 1) {
+			// same as terminal rebootwdt command
+			chSysLock();
+			for (;;) {__NOP();}
+		}
+		else {
+			do_shutdown(false);
+		}
 	} break;
 
 	// Blocking commands. Only one of them runs at any given time, in their
@@ -2409,3 +2378,5 @@ static THD_FUNCTION(blocking_thread, arg) {
 		}
 	}
 }
+
+#pragma GCC pop_options

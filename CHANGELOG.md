@@ -31,6 +31,12 @@
 	* Added shutdown-hold.
 	* Added crc32.
 	* Support for only polling variables starting with VT.
+	* Added rand.
+	* Built-in sort function that is much faster and can sort much larger lists.
+	* Added foc-play-tone and foc-play-stop.
+	* Added foc-play-samples.
+	* Added can-msg-age.
+	* Massive performance boost for string functions and 64-bit operations due to much faster memory allocation.
 * Hall sensors improvements:
 	* Smooth transition to sensorless.
 	* Bug fix in interpolation.
@@ -47,6 +53,8 @@
 * Added FOC interpolation mode.
 * Allow passive flux linkage measurement.
 * Fixed some braking glitches.
+* Configurable HFI error truncation to reject noise.
+* Removed GPDrive.
 
 ### 6.02
 #### 2023-03-12

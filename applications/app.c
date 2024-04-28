@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "app.h"
 #include "ch.h"
 #include "hal.h"
@@ -26,7 +29,7 @@
 #include "comm_can.h"
 #include "imu.h"
 #include "crc.h"
-#include "servo_simple.h"
+#include "pwm_servo.h"
 #include "servo_dec.h"
 
 // Private variables
@@ -84,9 +87,9 @@ void app_set_configuration(app_configuration *conf) {
 				appconf.app_to_use != APP_PPM_UART &&
 				appconf.servo_out_enable) {
 			servodec_stop();
-			servo_simple_init();
+			pwm_servo_init_servo();
 		} else {
-			servo_simple_stop();
+			pwm_servo_stop();
 		}
 
 		switch (appconf.app_to_use) {
@@ -216,3 +219,5 @@ unsigned short app_calc_crc(app_configuration* conf) {
 	conf->crc = crc_old;
 	return crc_new;
 }
+
+#pragma GCC pop_options

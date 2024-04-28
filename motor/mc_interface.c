@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "mc_interface.h"
 #include "mcpwm.h"
 #include "mcpwm_foc.h"
@@ -31,7 +34,6 @@
 #include "commands.h"
 #include "encoder/encoder.h"
 #include "buffer.h"
-#include "gpdrive.h"
 #include "comm_can.h"
 #include "shutdown.h"
 #include "app.h"
@@ -50,6 +52,7 @@
 // Global variables
 volatile uint16_t ADC_Value[HW_ADC_CHANNELS + HW_ADC_CHANNELS_EXTRA];
 volatile float ADC_curr_norm_value[6];
+volatile float ADC_curr_raw[6];
 
 typedef struct {
 	mc_configuration m_conf;
@@ -118,6 +121,7 @@ static volatile int m_sample_int;
 static volatile bool m_sample_raw;
 static volatile debug_sampling_mode m_sample_mode;
 static volatile debug_sampling_mode m_sample_mode_last;
+static volatile int m_sample_offset_last;
 static volatile int m_sample_now;
 static volatile int m_sample_trigger;
 static volatile float m_last_adc_duration_sample;
@@ -139,6 +143,7 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 static void run_timer_tasks(volatile motor_if_state_t *motor);
 static void update_stats(volatile motor_if_state_t *motor);
 static volatile motor_if_state_t *motor_now(void);
+static void send_sample_block(int ind, int offset);
 
 // Function pointers
 static void(*pwn_done_func)(void) = 0;
@@ -180,6 +185,7 @@ void mc_interface_init(void) {
 	m_sample_trigger = 0;
 	m_sample_mode = DEBUG_SAMPLING_OFF;
 	m_sample_mode_last = DEBUG_SAMPLING_OFF;
+	m_sample_offset_last = 0;
 	m_sample_is_second_motor = false;
 
 	mc_interface_stat_reset();
@@ -235,10 +241,6 @@ void mc_interface_init(void) {
 #else
 		mcpwm_foc_init((mc_configuration*)&m_motor_1.m_conf, (mc_configuration*)&m_motor_1.m_conf);
 #endif
-		break;
-
-	case MOTOR_TYPE_GPD:
-		gpdrive_init(&motor_now()->m_conf);
 		break;
 
 	default:
@@ -350,7 +352,6 @@ void mc_interface_set_configuration(mc_configuration *configuration) {
 	if (motor->m_conf.motor_type != configuration->motor_type) {
 		mcpwm_deinit();
 		mcpwm_foc_deinit();
-		gpdrive_deinit();
 
 #ifdef HW_SET_SINGLE_MOTOR
 		if (configuration->motor_type == MOTOR_TYPE_FOC) {
@@ -374,10 +375,6 @@ void mc_interface_set_configuration(mc_configuration *configuration) {
 #else
 			mcpwm_foc_init((mc_configuration*)&m_motor_1.m_conf, (mc_configuration*)&m_motor_1.m_conf);
 #endif
-			break;
-
-		case MOTOR_TYPE_GPD:
-			gpdrive_init(&motor->m_conf);
 			break;
 
 		default:
@@ -408,10 +405,6 @@ void mc_interface_set_configuration(mc_configuration *configuration) {
 		mcpwm_foc_set_configuration((mc_configuration*)&motor->m_conf);
 		break;
 
-	case MOTOR_TYPE_GPD:
-		gpdrive_set_configuration(&motor->m_conf);
-		break;
-
 	default:
 		break;
 	}
@@ -429,10 +422,6 @@ bool mc_interface_dccal_done(void) {
 
 	case MOTOR_TYPE_FOC:
 		ret = mcpwm_foc_is_dccal_done();
-		break;
-
-	case MOTOR_TYPE_GPD:
-		ret = gpdrive_is_dccal_done();
 		break;
 
 	default:
@@ -708,11 +697,6 @@ void mc_interface_set_brake_current(float current) {
 
 	case MOTOR_TYPE_FOC:
 		mcpwm_foc_set_brake_current(DIR_MULT * current);
-		break;
-
-	case MOTOR_TYPE_GPD:
-		// For timeout to stop the output
-		gpdrive_set_mode(GPD_OUTPUT_MODE_NONE);
 		break;
 
 	default:
@@ -1050,10 +1034,6 @@ float mc_interface_get_sampling_frequency_now(void) {
 		ret = mcpwm_foc_get_sampling_frequency_now();
 		break;
 
-	case MOTOR_TYPE_GPD:
-		ret = gpdrive_get_switching_frequency_now();
-		break;
-
 	default:
 		break;
 	}
@@ -1373,10 +1353,6 @@ float mc_interface_get_last_inj_adc_isr_duration(void) {
 		ret = mcpwm_foc_get_last_adc_isr_duration();
 		break;
 
-	case MOTOR_TYPE_GPD:
-		ret = gpdrive_get_last_adc_isr_duration();
-		break;
-
 	default:
 		break;
 	}
@@ -1385,10 +1361,6 @@ float mc_interface_get_last_inj_adc_isr_duration(void) {
 }
 
 float mc_interface_read_reset_avg_motor_current(void) {
-	if (motor_now()->m_conf.motor_type == MOTOR_TYPE_GPD) {
-		return gpdrive_get_current_filtered();
-	}
-
 	float res = motor_now()->m_motor_current_sum / motor_now()->m_motor_current_iterations;
 	motor_now()->m_motor_current_sum = 0.0;
 	motor_now()->m_motor_current_iterations = 0.0;
@@ -1396,10 +1368,6 @@ float mc_interface_read_reset_avg_motor_current(void) {
 }
 
 float mc_interface_read_reset_avg_input_current(void) {
-	if (motor_now()->m_conf.motor_type == MOTOR_TYPE_GPD) {
-		return gpdrive_get_current_filtered() * gpdrive_get_modulation();
-	}
-
 	float res = motor_now()->m_input_current_sum / motor_now()->m_input_current_iterations;
 	motor_now()->m_input_current_sum = 0.0;
 	motor_now()->m_input_current_iterations = 0.0;
@@ -1520,12 +1488,16 @@ float mc_interface_get_last_sample_adc_isr_duration(void) {
 void mc_interface_sample_print_data(debug_sampling_mode mode, uint16_t len, uint8_t decimation, bool raw, 
 		void(*reply_func)(unsigned char *data, unsigned int len)) {
 
+	send_func_sample = reply_func;
+
 	if (len > ADC_SAMPLE_MAX_LEN) {
 		len = ADC_SAMPLE_MAX_LEN;
 	}
 
 	if (mode == DEBUG_SAMPLING_SEND_LAST_SAMPLES) {
 		chEvtSignal(sample_send_tp, (eventmask_t) 1);
+	} else if (mode == DEBUG_SAMPLING_SEND_SINGLE_SAMPLE) {
+		send_sample_block(len, m_sample_offset_last);
 	} else {
 		m_sample_trigger = -1;
 		m_sample_now = 0;
@@ -1533,7 +1505,6 @@ void mc_interface_sample_print_data(debug_sampling_mode mode, uint16_t len, uint
 		m_sample_int = decimation;
 		m_sample_mode = mode;
 		m_sample_raw = raw;
-		send_func_sample = reply_func;
 #ifdef HW_HAS_DUAL_MOTORS
 		m_sample_is_second_motor = motor_now() == &m_motor_2;
 #endif
@@ -1870,6 +1841,8 @@ void mc_interface_fault_stop(mc_fault_code fault, bool is_second_motor, bool is_
 	}
 }
 
+#pragma GCC pop_options
+
 void mc_interface_mc_timer_isr(bool is_second_motor) {
 	ledpwm_update_pwm();
 
@@ -2162,8 +2135,8 @@ void mc_interface_mc_timer_isr(bool is_second_motor) {
 			}
 
 			if (state == MC_STATE_DETECTING) {
-				m_curr0_samples[m_sample_now] = (int16_t)mcpwm_detect_currents[mcpwm_get_comm_step() - 1];
-				m_curr1_samples[m_sample_now] = (int16_t)mcpwm_detect_currents_diff[mcpwm_get_comm_step() - 1];
+				m_curr0_samples[m_sample_now] = (int16_t)(mcpwm_detect_currents[mcpwm_get_comm_step() - 1] * (8.0 / FAC_CURRENT));
+				m_curr1_samples[m_sample_now] = (int16_t)(mcpwm_detect_currents_diff[mcpwm_get_comm_step() - 1] * (8.0 / FAC_CURRENT));
 				m_curr2_samples[m_sample_now] = 0;
 
 				m_ph1_samples[m_sample_now] = (int16_t)mcpwm_detect_voltages[0];
@@ -2171,17 +2144,29 @@ void mc_interface_mc_timer_isr(bool is_second_motor) {
 				m_ph3_samples[m_sample_now] = (int16_t)mcpwm_detect_voltages[2];
 			} else {
 				if (is_second_motor) {
-					m_curr0_samples[m_sample_now] = ADC_curr_norm_value[3];
-					m_curr1_samples[m_sample_now] = ADC_curr_norm_value[4];
-					m_curr2_samples[m_sample_now] = ADC_curr_norm_value[5];
+					if (m_sample_raw) {
+						m_curr0_samples[m_sample_now] = ADC_curr_raw[3];
+						m_curr1_samples[m_sample_now] = ADC_curr_raw[4];
+						m_curr2_samples[m_sample_now] = ADC_curr_raw[5];
+					} else {
+						m_curr0_samples[m_sample_now] = ADC_curr_norm_value[3] * (8.0 / FAC_CURRENT);
+						m_curr1_samples[m_sample_now] = ADC_curr_norm_value[4] * (8.0 / FAC_CURRENT);
+						m_curr2_samples[m_sample_now] = ADC_curr_norm_value[5] * (8.0 / FAC_CURRENT);	
+					}
 
 					m_ph1_samples[m_sample_now] = ADC_V_L4 - zero;
 					m_ph2_samples[m_sample_now] = ADC_V_L5 - zero;
 					m_ph3_samples[m_sample_now] = ADC_V_L6 - zero;
 				} else {
-					m_curr0_samples[m_sample_now] = ADC_curr_norm_value[0];
-					m_curr1_samples[m_sample_now] = ADC_curr_norm_value[1];
-					m_curr2_samples[m_sample_now] = ADC_curr_norm_value[2];
+					if (m_sample_raw) {
+						m_curr0_samples[m_sample_now] = ADC_curr_raw[0];
+						m_curr1_samples[m_sample_now] = ADC_curr_raw[1];
+						m_curr2_samples[m_sample_now] = ADC_curr_raw[2];
+					} else {
+						m_curr0_samples[m_sample_now] = ADC_curr_norm_value[0] * (8.0 / FAC_CURRENT);
+						m_curr1_samples[m_sample_now] = ADC_curr_norm_value[1] * (8.0 / FAC_CURRENT);
+						m_curr2_samples[m_sample_now] = ADC_curr_norm_value[2] * (8.0 / FAC_CURRENT);
+					}					
 
 					m_ph1_samples[m_sample_now] = ADC_V_L1 - zero;
 					m_ph2_samples[m_sample_now] = ADC_V_L2 - zero;
@@ -2826,6 +2811,51 @@ static THD_FUNCTION(stat_thread, arg) {
 	}
 }
 
+static void send_sample_block(int ind, int offset) {
+	uint8_t buffer[50];
+	int32_t index = 0;
+	int ind_samp = ind + offset;
+
+	while (ind_samp >= ADC_SAMPLE_MAX_LEN) {
+		ind_samp -= ADC_SAMPLE_MAX_LEN;
+	}
+
+	while (ind_samp < 0) {
+		ind_samp += ADC_SAMPLE_MAX_LEN;
+	}
+
+	buffer[index++] = COMM_SAMPLE_PRINT;
+
+	buffer_append_int16(buffer, ind, &index);
+
+	if (m_sample_raw) {
+		buffer_append_float32_auto(buffer, (float)m_curr0_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_curr1_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_curr2_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_ph1_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_ph2_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_ph3_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_vzero_samples[ind_samp], &index);
+		buffer_append_float32_auto(buffer, (float)m_curr_fir_samples[ind_samp], &index);
+	} else {
+		buffer_append_float32_auto(buffer, (float)m_curr0_samples[ind_samp] / (8.0 / FAC_CURRENT), &index);
+		buffer_append_float32_auto(buffer, (float)m_curr1_samples[ind_samp] / (8.0 / FAC_CURRENT), &index);
+		buffer_append_float32_auto(buffer, (float)m_curr2_samples[ind_samp] / (8.0 / FAC_CURRENT), &index);
+		buffer_append_float32_auto(buffer, ((float)m_ph1_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
+		buffer_append_float32_auto(buffer, ((float)m_ph2_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
+		buffer_append_float32_auto(buffer, ((float)m_ph3_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
+		buffer_append_float32_auto(buffer, ((float)m_vzero_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_INPUT_FACTOR, &index);
+		buffer_append_float32_auto(buffer, (float)m_curr_fir_samples[ind_samp] / (8.0 / FAC_CURRENT), &index);
+	}
+
+	buffer_append_float32_auto(buffer, (float)m_f_sw_samples[ind_samp] * 10.0, &index);
+	buffer[index++] = m_status_samples[ind_samp];
+	buffer[index++] = m_phase_samples[ind_samp];
+	buffer_append_int32(buffer, ind, &index);
+
+	send_func_sample(buffer, index);
+}
+
 static THD_FUNCTION(sample_send_thread, arg) {
 	(void)arg;
 
@@ -2856,46 +2886,10 @@ static THD_FUNCTION(sample_send_thread, arg) {
 			break;
 		}
 
+		m_sample_offset_last = offset;
+
 		for (int i = 0;i < len;i++) {
-			uint8_t buffer[40];
-			int32_t index = 0;
-			int ind_samp = i + offset;
-
-			while (ind_samp >= ADC_SAMPLE_MAX_LEN) {
-				ind_samp -= ADC_SAMPLE_MAX_LEN;
-			}
-
-			while (ind_samp < 0) {
-				ind_samp += ADC_SAMPLE_MAX_LEN;
-			}
-
-			buffer[index++] = COMM_SAMPLE_PRINT;
-
-			if (m_sample_raw) {
-				buffer_append_float32_auto(buffer, (float)m_curr0_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_curr1_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_curr2_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_ph1_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_ph2_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_ph3_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_vzero_samples[ind_samp], &index);
-				buffer_append_float32_auto(buffer, (float)m_curr_fir_samples[ind_samp], &index);
-			} else {
-				buffer_append_float32_auto(buffer, (float)m_curr0_samples[ind_samp] * FAC_CURRENT, &index);
-				buffer_append_float32_auto(buffer, (float)m_curr1_samples[ind_samp] * FAC_CURRENT, &index);
-				buffer_append_float32_auto(buffer, (float)m_curr2_samples[ind_samp] * FAC_CURRENT, &index);
-				buffer_append_float32_auto(buffer, ((float)m_ph1_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
-				buffer_append_float32_auto(buffer, ((float)m_ph2_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
-				buffer_append_float32_auto(buffer, ((float)m_ph3_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR, &index);
-				buffer_append_float32_auto(buffer, ((float)m_vzero_samples[ind_samp] / 4096.0 * V_REG) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_INPUT_FACTOR, &index);
-				buffer_append_float32_auto(buffer, (float)m_curr_fir_samples[ind_samp] / (8.0 / FAC_CURRENT), &index);
-			}
-
-			buffer_append_float32_auto(buffer, (float)m_f_sw_samples[ind_samp] * 10.0, &index);
-			buffer[index++] = m_status_samples[ind_samp];
-			buffer[index++] = m_phase_samples[ind_samp];
-
-			send_func_sample(buffer, index);
+			send_sample_block(i, offset);
 		}
 	}
 }
@@ -2986,10 +2980,6 @@ static THD_FUNCTION(fault_stop_thread, arg) {
 
 		case MOTOR_TYPE_FOC:
 			mcpwm_foc_stop_pwm(fault_data_copy.is_second_motor);
-			break;
-
-		case MOTOR_TYPE_GPD:
-			gpdrive_set_mode(GPD_OUTPUT_MODE_NONE);
 			break;
 
 		default:

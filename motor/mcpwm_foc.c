@@ -165,6 +165,9 @@ static void update_hfi_samples(foc_hfi_samples samples, volatile motor_all_state
 	utils_sys_unlock_cnt();
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 static void timer_reinit(int f_zv) {
 	utils_sys_lock_cnt();
 
@@ -330,6 +333,19 @@ static void timer_reinit(int f_zv) {
 	nvicEnableVector(TIM2_IRQn, 6);
 }
 
+static void init_audio_state(volatile mc_audio_state *s) {
+	memset((void*)s, 0, sizeof(mc_audio_state));
+
+	s->mode = MC_AUDIO_OFF;
+	for (int i = 0;i < MC_AUDIO_CHANNELS;i++) {
+		s->table[i] = utils_tab_sin_32_1;
+		s->table_len[i] = 32;
+		s->table_voltage[i] = 0.0;
+		s->table_freq[i] = 1000.0;
+		s->table_pos[i] = 0.0;
+	}
+}
+
 void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 	utils_sys_lock_cnt();
 
@@ -348,6 +364,7 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 	m_motor_1.m_hall_dt_diff_last = 1.0;
 	foc_precalc_values((motor_all_state_t*)&m_motor_1);
 	update_hfi_samples(m_motor_1.m_conf->foc_hfi_samples, &m_motor_1);
+	init_audio_state(&m_motor_1.m_audio);
 
 #ifdef HW_HAS_DUAL_MOTORS
 	memset((void*)&m_motor_2, 0, sizeof(motor_all_state_t));
@@ -357,6 +374,7 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 	m_motor_2.m_hall_dt_diff_last = 1.0;
 	foc_precalc_values((motor_all_state_t*)&m_motor_2);
 	update_hfi_samples(m_motor_2.m_conf->foc_hfi_samples, &m_motor_2);
+	init_audio_state(&m_motor_2.m_audio);
 #endif
 
 	virtual_motor_init(conf_m1);
@@ -772,17 +790,19 @@ void mcpwm_foc_set_pid_pos(float pos) {
  * The current to use.
  */
 void mcpwm_foc_set_current(float current) {
-	get_motor_now()->m_control_mode = CONTROL_MODE_CURRENT;
-	get_motor_now()->m_iq_set = current;
-	get_motor_now()->m_id_set = 0;
+	volatile motor_all_state_t *motor = get_motor_now();
+
+	motor->m_control_mode = CONTROL_MODE_CURRENT;
+	motor->m_iq_set = current;
+	motor->m_id_set = 0;
 	
-	if (fabsf(current) < get_motor_now()->m_conf->cc_min_current) {
+	if (fabsf(current) < motor->m_conf->cc_min_current) {
 		return;
 	}
 
-	if (get_motor_now()->m_state != MC_STATE_RUNNING) {
-		get_motor_now()->m_motor_released = false;
-		get_motor_now()->m_state = MC_STATE_RUNNING;
+	if (motor->m_state != MC_STATE_RUNNING) {
+		motor->m_motor_released = false;
+		motor->m_state = MC_STATE_RUNNING;
 	}
 }
 
@@ -2014,6 +2034,10 @@ int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *cu
 }
 
 bool mcpwm_foc_beep(float freq, float time, float voltage) {
+	if (mc_interface_get_fault() != FAULT_CODE_NONE) {
+		return false;
+	}
+
 	volatile motor_all_state_t *motor = get_motor_now();
 
 	mc_foc_sensor_mode sensor_mode_old = motor->m_conf->foc_sensor_mode;
@@ -2080,6 +2104,116 @@ bool mcpwm_foc_beep(float freq, float time, float voltage) {
 	mc_interface_unlock();
 
 	return true;
+}
+
+bool mcpwm_foc_play_tone(int channel, float freq, float voltage) {
+	if (mc_interface_get_fault() != FAULT_CODE_NONE) {
+		return false;
+	}
+
+	if (channel < 0 || channel >= MC_AUDIO_CHANNELS) {
+		return false;
+	}
+
+	volatile motor_all_state_t *motor = get_motor_now();
+
+	if (freq <= 0.1 || freq > motor->m_conf->foc_f_zv * 0.5) {
+		return false;
+	}
+
+	motor->m_audio.table_freq[channel] = freq;
+	motor->m_audio.table_voltage[channel] = voltage;
+	motor->m_audio.mode = MC_AUDIO_TABLE;
+
+	if (voltage < 0.01) {
+		return true;
+	}
+
+	mcpwm_foc_set_current_off_delay(1.0);
+
+	if (motor->m_state != MC_STATE_RUNNING) {
+		motor->m_control_mode = CONTROL_MODE_CURRENT;
+		motor->m_iq_set = 0.0;
+		motor->m_id_set = 0.0;
+		motor->m_motor_released = false;
+		motor->m_state = MC_STATE_RUNNING;
+	}
+
+	return true;
+}
+
+void mcpwm_foc_stop_audio(bool reset) {
+	volatile mc_audio_state *audio = &get_motor_now()->m_audio;
+	audio->mode = MC_AUDIO_OFF;
+
+	if (reset) {
+		init_audio_state(audio);
+	}
+}
+
+bool mcpwm_foc_set_audio_sample_table(int channel, float *samples, int len) {
+	if (channel < 0 || channel >= MC_AUDIO_CHANNELS) {
+		return false;
+	}
+
+	volatile mc_audio_state *audio = &get_motor_now()->m_audio;
+
+	audio->table[channel] = samples;
+	audio->table_len[channel] = len;
+	audio->table_pos[channel] = 0.0;
+
+	return true;
+}
+
+const float *mcpwm_foc_get_audio_sample_table(int channel) {
+	if (channel < 0 || channel >= MC_AUDIO_CHANNELS) {
+		return false;
+	}
+
+	volatile mc_audio_state *audio = &get_motor_now()->m_audio;
+
+	return audio->table[channel];
+}
+
+bool mcpwm_foc_play_audio_samples(const int8_t *samples, int num_samp, float f_samp, float voltage) {
+	if (mc_interface_get_fault() != FAULT_CODE_NONE) {
+		return false;
+	}
+
+	volatile motor_all_state_t *motor = get_motor_now();
+	volatile mc_audio_state *audio = &motor->m_audio;
+
+	audio->sample_freq = f_samp;
+	audio->sample_voltage = voltage;
+	motor->m_audio.mode = MC_AUDIO_SAMPLED;
+
+	bool res = false;
+
+	if (samples) {
+		if (!audio->sample_table_filled[0]) {
+			audio->sample_table[0] = samples;
+			audio->sample_table_len[0] = num_samp;
+			audio->sample_table_filled[0] = true;
+			res = true;
+		} else  if (!audio->sample_table_filled[1]) {
+			audio->sample_table[1] = samples;
+			audio->sample_table_len[1] = num_samp;
+			audio->sample_table_filled[1] = true;
+			res = true;
+		}
+	}
+
+	mcpwm_foc_set_current_off_delay(1.0);
+
+	if (motor->m_state != MC_STATE_RUNNING) {
+		motor->m_control_mode = CONTROL_MODE_CURRENT;
+		motor->m_iq_set = 0.0;
+		motor->m_id_set = 0.0;
+		motor->m_motor_released = false;
+		motor->m_state = MC_STATE_RUNNING;
+	}
+
+	return res;
 }
 
 /**
@@ -2341,10 +2475,10 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 
 	for (float i = 0;i < samples;i++) {
 		current_sum[0] += m_motor_1.m_currents_adc[0];
-		voltage_sum[0] += ADC_VOLTS(ADC_IND_SENS1);
+		voltage_sum[0] += ADC_V_L1_VOLTS;
 #ifdef HW_HAS_DUAL_MOTORS
 		current_sum_m2[0] += m_motor_2.m_currents_adc[0];
-		voltage_sum_m2[0] += ADC_VOLTS(ADC_IND_SENS4);
+		voltage_sum_m2[0] += ADC_V_L4_VOLTS;
 #endif
 		chThdSleep(1);
 	}
@@ -2370,10 +2504,10 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 
 	for (float i = 0;i < samples;i++) {
 		current_sum[1] += m_motor_1.m_currents_adc[1];
-		voltage_sum[1] += ADC_VOLTS(ADC_IND_SENS2);
+		voltage_sum[1] += ADC_V_L2_VOLTS;
 #ifdef HW_HAS_DUAL_MOTORS
 		current_sum_m2[1] += m_motor_2.m_currents_adc[1];
-		voltage_sum_m2[1] += ADC_VOLTS(ADC_IND_SENS5);
+		voltage_sum_m2[1] += ADC_V_L5_VOLTS;
 #endif
 		chThdSleep(1);
 	}
@@ -2399,10 +2533,10 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 
 	for (float i = 0;i < samples;i++) {
 		current_sum[2] += m_motor_1.m_currents_adc[2];
-		voltage_sum[2] += ADC_VOLTS(ADC_IND_SENS3);
+		voltage_sum[2] += ADC_V_L3_VOLTS;
 #ifdef HW_HAS_DUAL_MOTORS
 		current_sum_m2[2] += m_motor_2.m_currents_adc[2];
-		voltage_sum_m2[2] += ADC_VOLTS(ADC_IND_SENS6);
+		voltage_sum_m2[2] += ADC_V_L6_VOLTS;
 #endif
 		chThdSleep(1);
 	}
@@ -2450,15 +2584,15 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 #endif
 
 		for (float i = 0;i < samples;i++) {
-			v_avg = (ADC_VOLTS(ADC_IND_SENS1) + ADC_VOLTS(ADC_IND_SENS2) + ADC_VOLTS(ADC_IND_SENS3)) / 3.0;
-			voltage_sum[0] += ADC_VOLTS(ADC_IND_SENS1) - v_avg;
-			voltage_sum[1] += ADC_VOLTS(ADC_IND_SENS2) - v_avg;
-			voltage_sum[2] += ADC_VOLTS(ADC_IND_SENS3) - v_avg;
+			v_avg = (ADC_V_L1_VOLTS + ADC_V_L2_VOLTS + ADC_V_L3_VOLTS) / 3.0;
+			voltage_sum[0] += ADC_V_L1_VOLTS - v_avg;
+			voltage_sum[1] += ADC_V_L2_VOLTS - v_avg;
+			voltage_sum[2] += ADC_V_L3_VOLTS - v_avg;
 #ifdef HW_HAS_DUAL_MOTORS
-			v_avg = (ADC_VOLTS(ADC_IND_SENS4) + ADC_VOLTS(ADC_IND_SENS5) + ADC_VOLTS(ADC_IND_SENS6)) / 3.0;
-			voltage_sum_m2[0] += ADC_VOLTS(ADC_IND_SENS4) - v_avg;
-			voltage_sum_m2[1] += ADC_VOLTS(ADC_IND_SENS5) - v_avg;
-			voltage_sum_m2[2] += ADC_VOLTS(ADC_IND_SENS6) - v_avg;
+			v_avg = (ADC_V_L4_VOLTS + ADC_V_L5_VOLTS + ADC_V_L6_VOLTS) / 3.0;
+			voltage_sum_m2[0] += ADC_V_L4_VOLTS - v_avg;
+			voltage_sum_m2[1] += ADC_V_L5_VOLTS - v_avg;
+			voltage_sum_m2[2] += ADC_V_L6_VOLTS - v_avg;
 #endif
 			chThdSleep(1);
 		}
@@ -2547,11 +2681,11 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 
 	for (float i = 0; i < samples; i++) {
 		current_sum[0] += m_motor_1.m_currents_adc[0];
-		voltage_sum[0] += ADC_VOLTS(ADC_IND_SENS1);
+		voltage_sum[0] += ADC_V_L1_VOLTS;
 		current_sum[1] += m_motor_1.m_currents_adc[1];
-		voltage_sum[1] += ADC_VOLTS(ADC_IND_SENS2);
+		voltage_sum[1] += ADC_V_L2_VOLTS;
 		current_sum[2] += m_motor_1.m_currents_adc[2];
-		voltage_sum[2] += ADC_VOLTS(ADC_IND_SENS3);
+		voltage_sum[2] += ADC_V_L3_VOLTS;
 		chThdSleep(1);
 	}	
 
@@ -2578,10 +2712,10 @@ int mcpwm_foc_dc_cal(bool cal_undriven) {
 		voltage_sum[0] = 0.0; voltage_sum[1] = 0.0; voltage_sum[2] = 0.0;
 
 		for (float i = 0;i < samples;i++) {
-			v_avg = (ADC_VOLTS(ADC_IND_SENS1) + ADC_VOLTS(ADC_IND_SENS2) + ADC_VOLTS(ADC_IND_SENS3)) / 3.0;
-			voltage_sum[0] += ADC_VOLTS(ADC_IND_SENS1) - v_avg;
-			voltage_sum[1] += ADC_VOLTS(ADC_IND_SENS2) - v_avg;
-			voltage_sum[2] += ADC_VOLTS(ADC_IND_SENS3) - v_avg;
+			v_avg = (ADC_V_L1_VOLTS + ADC_V_L2_VOLTS + ADC_V_L3_VOLTS) / 3.0;
+			voltage_sum[0] += ADC_V_L1_VOLTS - v_avg;
+			voltage_sum[1] += ADC_V_L2_VOLTS - v_avg;
+			voltage_sum[2] += ADC_V_L3_VOLTS - v_avg;
 
 			chThdSleep(1);
 		}
@@ -2639,6 +2773,8 @@ float mcpwm_foc_get_last_adc_isr_duration(void) {
 	return m_last_adc_isr_duration;
 }
 
+#pragma GCC pop_options
+
 void mcpwm_foc_tim_sample_int_handler(void) {
 	if (m_init_done) {
 		// Generate COM event here for synchronization
@@ -2665,10 +2801,11 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 	uint32_t t_start = timer_time_now();
 
 	bool is_v7 = !(TIM1->CR1 & TIM_CR1_DIR);
+	bool is_second_motor = false;
 	int norm_curr_ofs = 0;
 
 #ifdef HW_HAS_DUAL_MOTORS
-	bool is_second_motor = is_v7;
+	is_second_motor = is_v7;
 	norm_curr_ofs = is_second_motor ? 3 : 0;
 	motor_all_state_t *motor_now = is_second_motor ? (motor_all_state_t*)&m_motor_2 : (motor_all_state_t*)&m_motor_1;
 	motor_all_state_t *motor_other = is_second_motor ? (motor_all_state_t*)&m_motor_1 : (motor_all_state_t*)&m_motor_2;
@@ -2699,17 +2836,17 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		float curr1;
 
 		if (is_second_motor) {
-			curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-			curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+			curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT1;
+			curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT2;
 			TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 		} else {
-			curr0 = (GET_CURRENT1_M2() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-			curr1 = (GET_CURRENT2_M2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+			curr0 = (GET_CURRENT1_M2() - conf_other->foc_offsets_current[0]) * FAC_CURRENT1_M2;
+			curr1 = (GET_CURRENT2_M2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT2_M2;
 			TIMER_UPDATE_DUTY_M2(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 		}
 #else
-		float curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT;
-		float curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT;
+		float curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT1;
+		float curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT2;
 
 		TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 #ifdef HW_HAS_DUAL_PARALLEL
@@ -2792,58 +2929,62 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 	palClearPad(AD2S1205_SAMPLE_GPIO, AD2S1205_SAMPLE_PIN);
 #endif
 
-#ifdef HW_HAS_DUAL_MOTORS
 	float curr0 = 0;
 	float curr1 = 0;
+	float curr2 = 0;
 
+// Get ADC readings 0-4095
 	if (is_second_motor) {
 		curr0 = GET_CURRENT1_M2();
 		curr1 = GET_CURRENT2_M2();
+		curr2 = GET_CURRENT3_M2();
 	} else {
 		curr0 = GET_CURRENT1();
 		curr1 = GET_CURRENT2();
+		curr2 = GET_CURRENT3();
 	}
-#else
-	float curr0 = GET_CURRENT1();
-	float curr1 = GET_CURRENT2();
+
 #ifdef HW_HAS_DUAL_PARALLEL
+	// Add both currents together
 	curr0 += GET_CURRENT1_M2();
 	curr1 += GET_CURRENT2_M2();
-#endif
-#endif
-
-#ifdef HW_HAS_3_SHUNTS
-#ifdef HW_HAS_DUAL_MOTORS
-	float curr2 = is_second_motor ? GET_CURRENT3_M2() : GET_CURRENT3();
-#else
-	float curr2 = GET_CURRENT3();
-#ifdef HW_HAS_DUAL_PARALLEL
-	curr2 += GET_CURRENT3_M2();
-#endif
-#endif
+	curr2 += GET_CURRENT3_M2();	
 #endif
 
+// Store raw ADC readings
 	motor_now->m_currents_adc[0] = curr0;
 	motor_now->m_currents_adc[1] = curr1;
-#ifdef HW_HAS_3_SHUNTS
 	motor_now->m_currents_adc[2] = curr2;
-#else
-	motor_now->m_currents_adc[2] = 0.0;
-#endif
 
+// Shift to midpoint using offset (should be close to 2048)
 	curr0 -= conf_now->foc_offsets_current[0];
 	curr1 -= conf_now->foc_offsets_current[1];
-#ifdef HW_HAS_3_SHUNTS
 	curr2 -= conf_now->foc_offsets_current[2];
+	
+// Store midshifted raw ADC readings for raw sampling mode.
+	ADC_curr_raw[0 + norm_curr_ofs] = curr0;
+	ADC_curr_raw[1 + norm_curr_ofs] = curr1;
+	ADC_curr_raw[2 + norm_curr_ofs] = curr2;
+	
+#ifdef HW_HAS_3_SHUNTS	
+	// Calculate unbalance to detect bad sensor
 	motor_now->m_curr_unbalance = curr0 + curr1 + curr2;
-#endif
+#endif	
 
-	ADC_curr_norm_value[0 + norm_curr_ofs] = curr0;
-	ADC_curr_norm_value[1 + norm_curr_ofs] = curr1;
-#ifdef HW_HAS_3_SHUNTS
-	ADC_curr_norm_value[2 + norm_curr_ofs] = curr2;
-#else
-	ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0] + ADC_curr_norm_value[1]);
+// Scale to AMPs using calibrated scaling factors	
+	if (is_second_motor) {
+		curr0 *= FAC_CURRENT1_M2;
+		curr1 *= FAC_CURRENT2_M2;
+		curr2 *= FAC_CURRENT3_M2;
+	} else {
+		curr0 *= FAC_CURRENT1;
+		curr1 *= FAC_CURRENT2;
+		curr2 *= FAC_CURRENT3;
+	}
+	
+#ifndef HW_HAS_3_SHUNTS	
+	// Calculate third current assuming they are balanced
+	curr2 = -(curr0 + curr1);
 #endif
 
 	// Use the best current samples depending on the modulation state.
@@ -2851,16 +2992,16 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 	if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT) {
 		// High current sampling mode. Choose the lower currents to derive the highest one
 		// in order to be able to measure higher currents.
-		const float i0_abs = fabsf(ADC_curr_norm_value[0 + norm_curr_ofs]);
-		const float i1_abs = fabsf(ADC_curr_norm_value[1 + norm_curr_ofs]);
-		const float i2_abs = fabsf(ADC_curr_norm_value[2 + norm_curr_ofs]);
+		const float i0_abs = fabsf(curr0);
+		const float i1_abs = fabsf(curr1);
+		const float i2_abs = fabsf(curr2);
 
 		if (i0_abs > i1_abs && i0_abs > i2_abs) {
-			ADC_curr_norm_value[0 + norm_curr_ofs] = -(ADC_curr_norm_value[1 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+			curr0 = -(curr1 + curr2);
 		} else if (i1_abs > i0_abs && i1_abs > i2_abs) {
-			ADC_curr_norm_value[1 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+			curr1 = -(curr0 + curr2);
 		} else if (i2_abs > i0_abs && i2_abs > i1_abs) {
-			ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+			curr2 = -(curr0 + curr1);
 		}
 	} else if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO) {
 #ifdef HW_HAS_PHASE_SHUNTS
@@ -2868,28 +3009,28 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 			if (tim->CCR1 > 500 && tim->CCR2 > 500) {
 				// Use the same 2 shunts on low modulation, as that will avoid jumps in the current reading.
 				// This is especially important when using HFI.
-				ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+				curr2 = -(curr0 + curr1);
 			} else {
 				if (tim->CCR1 < tim->CCR2 && tim->CCR1 < tim->CCR3) {
-					ADC_curr_norm_value[0 + norm_curr_ofs] = -(ADC_curr_norm_value[1 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+					curr0 = -(curr1 + curr2);
 				} else if (tim->CCR2 < tim->CCR1 && tim->CCR2 < tim->CCR3) {
-					ADC_curr_norm_value[1 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+					curr1 = -(curr0 + curr2);
 				} else if (tim->CCR3 < tim->CCR1 && tim->CCR3 < tim->CCR2) {
-					ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+					curr2 = -(curr0 + curr1);
 				}
 			}
 		} else {
 			if (tim->CCR1 < (tim->ARR - 500) && tim->CCR2 < (tim->ARR - 500)) {
 				// Use the same 2 shunts on low modulation, as that will avoid jumps in the current reading.
 				// This is especially important when using HFI.
-				ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+				curr2 = -(curr0 + curr1);
 			} else {
 				if (tim->CCR1 > tim->CCR2 && tim->CCR1 > tim->CCR3) {
-					ADC_curr_norm_value[0 + norm_curr_ofs] = -(ADC_curr_norm_value[1 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+					curr0 = -(curr1 + curr2);
 				} else if (tim->CCR2 > tim->CCR1 && tim->CCR2 > tim->CCR3) {
-					ADC_curr_norm_value[1 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+					curr1 = -(curr0 + curr2);
 				} else if (tim->CCR3 > tim->CCR1 && tim->CCR3 > tim->CCR2) {
-					ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+					curr2 = -(curr0 + curr1);
 				}
 			}
 		}
@@ -2897,23 +3038,28 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		if (tim->CCR1 < (tim->ARR - 500) && tim->CCR2 < (tim->ARR - 500)) {
 			// Use the same 2 shunts on low modulation, as that will avoid jumps in the current reading.
 			// This is especially important when using HFI.
-			ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+			curr2 = -(curr0 + curr1);
 		} else {
 			if (tim->CCR1 > tim->CCR2 && tim->CCR1 > tim->CCR3) {
-				ADC_curr_norm_value[0 + norm_curr_ofs] = -(ADC_curr_norm_value[1 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+				curr0 = -(curr1 + curr2);
 			} else if (tim->CCR2 > tim->CCR1 && tim->CCR2 > tim->CCR3) {
-				ADC_curr_norm_value[1 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[2 + norm_curr_ofs]);
+				curr1 = -(curr0 + curr2);
 			} else if (tim->CCR3 > tim->CCR1 && tim->CCR3 > tim->CCR2) {
-				ADC_curr_norm_value[2 + norm_curr_ofs] = -(ADC_curr_norm_value[0 + norm_curr_ofs] + ADC_curr_norm_value[1 + norm_curr_ofs]);
+				curr2 = -(curr0 + curr1);
 			}
 		}
 #endif
 	}
 #endif
-
-	float ia = ADC_curr_norm_value[0 + norm_curr_ofs] * FAC_CURRENT;
-	float ib = ADC_curr_norm_value[1 + norm_curr_ofs] * FAC_CURRENT;
-	float ic = ADC_curr_norm_value[2 + norm_curr_ofs] * FAC_CURRENT;
+	
+	// Store the currents for sampling
+	ADC_curr_norm_value[0 + norm_curr_ofs] = curr0;
+	ADC_curr_norm_value[1 + norm_curr_ofs] = curr1;
+	ADC_curr_norm_value[2 + norm_curr_ofs] = curr2;
+	
+	float ia = curr0;
+	float ib = curr1;
+	float ic = curr2;
 
 	// This has to be done for the skip function to have any chance at working with the
 	// observer and control loops.
@@ -4038,11 +4184,12 @@ static THD_FUNCTION(pid_thread, arg) {
 		float dt = timer_seconds_elapsed_since(last_time);
 		last_time = timer_time_now();
 
-		foc_run_pid_control_pos(encoder_index_found(), dt, (motor_all_state_t*)&m_motor_1);
-		foc_run_pid_control_speed(dt, (motor_all_state_t*)&m_motor_1);
+		bool index_found = encoder_index_found();
+		foc_run_pid_control_pos(index_found, dt, (motor_all_state_t*)&m_motor_1);
+		foc_run_pid_control_speed(index_found, dt, (motor_all_state_t*)&m_motor_1);
 #ifdef HW_HAS_DUAL_MOTORS
-		foc_run_pid_control_pos(encoder_index_found(), dt, (motor_all_state_t*)&m_motor_2);
-		foc_run_pid_control_speed(dt, (motor_all_state_t*)&m_motor_2);
+		foc_run_pid_control_pos(index_found, dt, (motor_all_state_t*)&m_motor_2);
+		foc_run_pid_control_speed(index_found, dt, (motor_all_state_t*)&m_motor_2);
 #endif
 	}
 }
@@ -4237,6 +4384,60 @@ static void control_current(motor_all_state_t *motor, float dt) {
 	// Dead time compensated values for vd and vq. Note that these are not used to control the switching times.
 	state_m->vd = c * motor->m_motor_state.v_alpha + s * motor->m_motor_state.v_beta;
 	state_m->vq = c * motor->m_motor_state.v_beta  - s * motor->m_motor_state.v_alpha;
+
+	mc_audio_state *audio = &motor->m_audio;
+	switch (audio->mode) {
+	case MC_AUDIO_TABLE: {
+		float output = 0.0;
+
+		for (int i = 0;i < MC_AUDIO_CHANNELS; i++) {
+			float volts = audio->table_voltage[i];
+			audio->table_pos[i] += (float)audio->table_len[i] * audio->table_freq[i] * dt;
+			if (audio->table_pos[i] >= audio->table_len[i]) {
+				audio->table_pos[i] -= (float)audio->table_len[i];
+			}
+
+			if (volts > 0.01) {
+				int index = floorf(audio->table_pos[i]);
+				output += audio->table[i][index] * volts;
+			}
+		}
+
+		// Inject voltage along q-axis as that gives the most volume
+		output *= voltage_normalize;
+		state_m->mod_alpha_raw += -s * output;
+		state_m->mod_beta_raw  += c * output;
+		utils_saturate_vector_2d((float*)&state_m->mod_alpha_raw, (float*)&state_m->mod_beta_raw, SQRT3_BY_2 * 0.95);
+	} break;
+
+	case MC_AUDIO_SAMPLED: {
+		const int8_t *table = audio->sample_table[audio->sample_table_now];
+
+		if (!table || !audio->sample_table_filled[audio->sample_table_now]) {
+			break;
+		}
+
+		float sample = (float)table[(int)floorf(audio->sample_pos)] / 128.0 * audio->sample_voltage;
+
+		audio->sample_pos += dt * audio->sample_freq;
+		if (floorf(audio->sample_pos) >= audio->sample_table_len[audio->sample_table_now]) {
+			audio->sample_pos -= audio->sample_table_len[audio->sample_table_now];
+			audio->sample_table_filled[audio->sample_table_now] = false;
+			audio->sample_table_now++;
+			if (audio->sample_table_now > 1) {
+				audio->sample_table_now = 0;
+			}
+		}
+
+		state_m->mod_alpha_raw += -s * sample;
+		state_m->mod_beta_raw  += c * sample;
+		utils_saturate_vector_2d((float*)&state_m->mod_alpha_raw, (float*)&state_m->mod_beta_raw, SQRT3_BY_2 * 0.95);
+	} break;
+
+	default:
+		break;
+
+	}
 
 	// HFI
 	if (do_hfi) {
@@ -4489,34 +4690,34 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 #ifdef HW_HAS_DUAL_MOTORS
 #ifdef HW_HAS_3_SHUNTS
 	if (&m_motor_1 != motor) {
-		Va = (ADC_VOLTS(ADC_IND_SENS4) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vb = (ADC_VOLTS(ADC_IND_SENS5) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vc = (ADC_VOLTS(ADC_IND_SENS6) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Va = (ADC_V_L4_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vb = (ADC_V_L5_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vc = (ADC_V_L6_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 	} else {
-		Va = (ADC_VOLTS(ADC_IND_SENS1) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vb = (ADC_VOLTS(ADC_IND_SENS2) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vc = (ADC_VOLTS(ADC_IND_SENS3) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Va = (ADC_V_L1_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vb = (ADC_V_L2_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vc = (ADC_V_L3_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 	}
 #else
 	if (&m_motor_1 != motor) {
-		Va = (ADC_VOLTS(ADC_IND_SENS4) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vb = (ADC_VOLTS(ADC_IND_SENS6) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vc = (ADC_VOLTS(ADC_IND_SENS5) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Va = (ADC_V_L4_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vb = (ADC_V_L6_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vc = (ADC_V_L5_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 	} else {
-		Va = (ADC_VOLTS(ADC_IND_SENS1) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vb = (ADC_VOLTS(ADC_IND_SENS3) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-		Vc = (ADC_VOLTS(ADC_IND_SENS2) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Va = (ADC_V_L1_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vb = (ADC_V_L3_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+		Vc = (ADC_V_L2_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 	}
 #endif
 #else
 #ifdef HW_HAS_3_SHUNTS
-	Va = (ADC_VOLTS(ADC_IND_SENS1) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-	Vb = (ADC_VOLTS(ADC_IND_SENS2) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-	Vc = (ADC_VOLTS(ADC_IND_SENS3) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Va = (ADC_V_L1_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Vb = (ADC_V_L2_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Vc = (ADC_V_L3_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 #else
-	Va = (ADC_VOLTS(ADC_IND_SENS1) - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-	Vb = (ADC_VOLTS(ADC_IND_SENS3) - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
-	Vc = (ADC_VOLTS(ADC_IND_SENS2) - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Va = (ADC_V_L1_VOLTS - ofs_volt[0]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Vb = (ADC_V_L3_VOLTS - ofs_volt[2]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
+	Vc = (ADC_V_L2_VOLTS - ofs_volt[1]) * ((VIN_R1 + VIN_R2) / VIN_R2) * ADC_VOLTS_PH_FACTOR;
 #endif
 #endif
 

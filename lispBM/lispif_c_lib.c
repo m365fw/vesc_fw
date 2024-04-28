@@ -17,6 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+
 #include "ch.h"
 #include "hal.h"
 #include "hw.h"
@@ -40,7 +43,7 @@
 #include "encoder.h"
 #include "conf_general.h"
 #include "servo_dec.h"
-#include "servo_simple.h"
+#include "pwm_servo.h"
 #include "flash_helper.h"
 #include "mcpwm_foc.h"
 
@@ -237,6 +240,18 @@ static bool get_gpio(VESC_PIN io, stm32_gpio_t **port, uint32_t *pin, bool *is_a
 	case VESC_PIN_PPM:
 #ifdef HW_ICU_GPIO
 		*port = HW_ICU_GPIO; *pin = HW_ICU_PIN;
+		res = true;
+#endif
+		break;
+	case VESC_PIN_HW_1:
+#ifdef PIN_HW_1
+		*port = PIN_HW_1_GPIO; *pin = PIN_HW_1;
+		res = true;
+#endif
+		break;
+	case VESC_PIN_HW_2:
+#ifdef PIN_HW_2
+		*port = PIN_HW_2_GPIO; *pin = PIN_HW_2;
 		res = true;
 #endif
 		break;
@@ -920,6 +935,18 @@ lbm_value ext_load_native_lib(lbm_value *args, lbm_uint argn) {
 		// Unblock unboxed
 		cif.cif.lbm_unblock_ctx_unboxed = lbm_unblock_ctx_unboxed;
 
+		// System time
+		cif.cif.system_time_ticks = chVTGetSystemTimeX;
+		cif.cif.sleep_ticks = chThdSleep;
+
+		// FOC Audio
+		cif.cif.foc_beep = mcpwm_foc_beep;
+		cif.cif.foc_play_tone = mcpwm_foc_play_tone;
+		cif.cif.foc_stop_audio = mcpwm_foc_stop_audio;
+		cif.cif.foc_set_audio_sample_table = mcpwm_foc_set_audio_sample_table;
+		cif.cif.foc_get_audio_sample_table = mcpwm_foc_get_audio_sample_table;
+		cif.cif.foc_play_audio_samples = mcpwm_foc_play_audio_samples;
+
 		lib_init_done = true;
 	}
 
@@ -1005,7 +1032,7 @@ void lispif_stop_lib(void) {
 
 float lispif_get_ppm(void) {
 	if (!servodec_is_running()) {
-		servo_simple_stop();
+		pwm_servo_stop();
 		servodec_init(0);
 	}
 
@@ -1024,3 +1051,5 @@ float lispif_get_ppm(void) {
 
 	return servo_val;
 }
+
+#pragma GCC pop_options

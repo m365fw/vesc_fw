@@ -178,6 +178,7 @@ package_dict["MP2"] = [['MP2', default_name],
                     ['MP2_no_limits', no_limits_name],
                     ['MP2_V0_5', default_name],
                     ['MP2_V0_5_no_limits', no_limits_name]]
+package_dict["SPARKF"] = [['sparkf', default_name]]
 
 # This is the firmware stub string
 res_firmwares_string = '        <file>TARGET_DESTINATION_DIRECTORY/TARGET_DESTINATION_FILENAME</file>\n'

@@ -12,7 +12,7 @@ jobs:
         limits: [null, "_no_limits"]  
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -24,7 +24,7 @@ jobs:
           make MP2${{ matrix.version }}${{ matrix.limits }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: MP2${{ matrix.version }}${{ matrix.limits }}_FW
           path: build/MP2${{ matrix.version }}${{ matrix.limits }}/MP2${{ matrix.version }}${{ matrix.limits }}.bin 

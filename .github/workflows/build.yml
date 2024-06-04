@@ -1,25 +1,30 @@
 name: Build BLDC
+
 on:
   push
+
 jobs:
   build:
-    name: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: ["V0.6", "V0.5"]
+        limits: [null, "_no_limits"]  
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
       - name: Install ARM SDK
         run: make arm_sdk_install
-      - name: Build MP2_100 (no limits)
-        run: make MP2_100_no_limits
-      - name: Build MP2_150 (no limits)
-        run: make MP2_150_no_limits
-      - uses: actions/upload-artifact@v3
+
+      - name: Build Firmware
+        run: |
+          make MP2_${{ matrix.version }}${{ matrix.limits }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          name: MP2_100_no_limits
-          path: build/MP2_100_no_limits/MP2_100_no_limits.bin
-      - uses: actions/upload-artifact@v3
-        with:
-          name: MP2_150_no_limits
-          path: build/MP2_150_no_limits/MP2_150_no_limits.bin
+          name: MP2_${{ matrix.version }}${{ matrix.limits }}_FW
+          path: build/MP2_${{ matrix.version }}${{ matrix.limits }}/MP2_${{ matrix.version }}${{ matrix.limits }}.bin 

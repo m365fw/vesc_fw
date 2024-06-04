@@ -13,11 +13,14 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
-#ifndef HW_MP2_100_NO_LIMITS_H_
-#define HW_MP2_100_NO_LIMITS_H_
+#ifndef HW_MP2_V0_5_NO_LIMITS_H_
+#define HW_MP2_V0_5_NO_LIMITS_H_
 
 #define DISABLE_HW_LIMITS
 
-#include "hw_MP2_100.h"
+// Warning: THIS DISABLES THE HARDWARE LIMITS AS WELL - NO MORE SAFETY
+#define NO_BRK
 
-#endif /* HW_MP2_100_NO_LIMITS_H_ */
+#include "hw_MP2_V0_5.h"
+
+#endif /* HW_MP2_V0_5_NO_LIMITS_H_ */

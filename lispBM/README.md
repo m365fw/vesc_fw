@@ -3288,12 +3288,25 @@ The following selection of app and motor parameters can be read and set from Lis
 'l-max-duty             ; Maximum duty cycle
 'l-watt-min             ; Minimum power regen in W (a negative value)
 'l-watt-max             ; Maximum power regen in W
-'l-battery-cut-start    ; The voltage where current starts to get reduced
-'l-battery-cut-end      ; The voltage below which current draw is not allowed
+'l-battery-cut-start    ; Voltage where current starts to get reduced
+'l-battery-cut-end      ; Voltage below which current is not allowed
 'l-temp-motor-start     ; Temperature where motor current starts to get reduced
 'l-temp-motor-end       ; Temperature above which motor current is not allowed
 'l-temp-accel-dec       ; Decrease temp limits this much during acceleration
-'bms-limit-mode         ; BMS limit mode bitfield (Added in FW 6.05)
+
+; BMS Settings (Added in FW 6.05)
+'bms-limit-mode         ; BMS limit mode bitfield
+                        ; Bit 0: Enable temperature limit
+                        ; Bit 1: Enable SOC limit
+                        ; Bit 2: Enable VCell min limit
+                        ; Bit 3: Enable VCell max limit
+'bms-t-limit-start      ; Temperature where current starts to get reduced
+'bms-t-limit-end        ; Temperature above which current is not allowed
+'bms-vmin-limit-start   ; VCell where current starts to get reduced
+'bms-vmin-limit-end     ; VCell below which current draw is not allowed
+'bms-vmax-limit-start   ; VCell where regen current starts to get reduced
+'bms-vmax-limit-end     ; VCell above which regen current is not allowed
+
 'motor-type             ; Motor Type
                         ;    0: BLDC (6-step commutation)
                         ;    1: DC (DC motor on phase A and C)
@@ -5934,6 +5947,20 @@ Get the size of a file in bytes. File can be a path (e.g. "test.txt") or a file 
 
 ---
 
+#### f-rename
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-rename oldname newname)
+```
+
+Rename file (same as moving a file). Returns true on success, nil otherwise.
+
+---
+
 #### f-fatinfo
 
 | Platforms | Firmware |
@@ -5998,6 +6025,51 @@ Write data to firmware-buffer at offset. Returns true on success or nil/timeout 
 ```
 
 Reboot and attempt to load the new firmware from the firmware-buffer using the bootloader. This function always returns true as there is no easy way to get the response from the bootloader. If the optional argument optCanId is omitted or set to -1 the command is performed locally, otherwise it is performed on the CAN-device with id optCanId.
+
+---
+
+#### fw-data
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(fw-data optOffset optLen)
+```
+
+Get the firmware data partition as an array. The optional argument optOffset can be used to specify an offset in the partition and the optional argument optLen can be used to specify the length. By default the offset is 0 and the length is the entire firmware buffer (around 1.5 MB).
+
+Note that this array is read-only, so do not try to write directly to it! It is however possible to write to it using fw-write-raw if fw-erase has been performed first. After the erase each byte can be written to once, in any order.
+
+Example:
+```clj
+; An array with the first 10 bytes of the firmware buffer
+(def fwd (fw-data 0 10))
+
+; Erase at least 100 bytes
+(fw-erase 100)
+
+; Write 1 to 10 to the beginning of the firmware buffer.
+(fw-write-raw 0 [1 2 3 4 5 6 7 8 9 10])
+
+; Print the array
+(print fwd)
+```
+
+---
+
+#### fw-write-raw
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(fw-write-raw offset data)
+```
+
+Write data to firmware-buffer at offset. Returns true on success or nil on failure. Unlike fw-write, this function writes directly to the firmware buffer without an offset shift and it supports writing more than 500 bytes at a time.
 
 ---
 
@@ -6393,6 +6465,105 @@ Scale color with factor. The result is truncated between 0 to 255. As with color
 
 (print-color (color-scale '(0x224488 0x111111 0x222222) 0.6))
 > ((20 40 81 0) (10 10 10 0) (20 20 20 0))
+```
+
+---
+
+## File (De-)Compression
+
+---
+
+#### unzip
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(unzip input fileInZip optOutputFile)
+```
+
+Unzip input. Input can be a byte array or a file handle on the SD-card. FileInZip is the file in the zip-archive; if it is a string the filename will be used and if it is an integer its sequence number will be used. The optional argument optOutputFile can be used to specify a file to write the output to - if it is not provided the decompressed file is returned as a byte array.
+
+**Note:**   
+When optOutputFile is used the firmware buffer is used to temporally store the output file in order to make the operation as fast as possible. That means if anything is in the firmware buffer it will be destroyed. It also means that the maximum size of the output file is 1.5 MB.
+
+Examples:
+
+```clj
+; Unzip the first file of the archive test.zip (on the SD-card) to the byte array uz 
+(def f (f-open "test.zip" "r"))
+(def uz (unzip f 0))
+(f-close f)
+```
+
+```clj
+; Unzip the file hello.txt of the archive test.zip (on the SD-card) to the byte array uz 
+(def f (f-open "test.zip" "r"))
+(def uz (unzip f "hello.txt"))
+(f-close f)
+```
+
+```clj
+; Unzip the first file of the imported archive test.zip to the byte array uz 
+(import "test.zip" 'test)
+(def uz (unzip test 0))
+```
+
+```clj
+; Unzip the file hello.txt of the imported archive test.zip to the byte array uz 
+(import "test.zip" 'test)
+(def uz (unzip test "hello.txt"))
+```
+
+```clj
+; Unzip the file hello.txt of the archive test.zip (on the SD-card) to the file hello.txt on the SD-card 
+(def f (f-open "test.zip" "r"))
+(def f-out (f-open "hello.txt" "w"))
+(unzip f "hello.txt" f-out)
+(f-close f)
+(f-close f-out)
+```
+
+```clj
+; Unzip the file hello.txt of the archive imported test.zip to the file hello.txt on the SD-card 
+(import "test.zip" 'test)
+(def f-out (f-open "hello.txt" "w"))
+(unzip test "hello.txt" f-out)
+(f-close f-out)
+```
+
+---
+
+#### zip-ls
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(zip-ls input)
+```
+
+List all files in the archive input. Input can be a byte array or a file handle on the SD-card. Returns a list with the entries; each entry is a list where the first element is the name and the second element is the size when uncompressed.
+
+Example:
+
+```clj
+; List all files in the archive test.zip on the SD-card
+(def f (f-open "test.zip" "r"))
+(print (zip-ls f))
+(f-close f)
+
+> (("test.txt" 7) ("fw.bin" 291871))
+```
+
+```clj
+; List all files in the imported archive test.zip
+(import "test.zip" 'test)
+(print (zip-ls test))
+
+> (("test.txt" 7) ("fw.bin" 291871))
 ```
 
 ---

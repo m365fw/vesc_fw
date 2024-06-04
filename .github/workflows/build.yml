@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: ["V0.6", "V0.5"]
+        version: ["V0_6", "V0_5"]
         limits: [null, "_no_limits"]  
 
     steps:

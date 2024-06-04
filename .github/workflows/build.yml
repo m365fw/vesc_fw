@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: ["V0_6", "V0_5"]
+        version: [null, "_V0_5"]
         limits: [null, "_no_limits"]  
 
     steps:
@@ -21,10 +21,10 @@ jobs:
 
       - name: Build Firmware
         run: |
-          make MP2_${{ matrix.version }}${{ matrix.limits }}
+          make MP2${{ matrix.version }}${{ matrix.limits }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: MP2_${{ matrix.version }}${{ matrix.limits }}_FW
-          path: build/MP2_${{ matrix.version }}${{ matrix.limits }}/MP2_${{ matrix.version }}${{ matrix.limits }}.bin 
+          name: MP2${{ matrix.version }}${{ matrix.limits }}_FW
+          path: build/MP2${{ matrix.version }}${{ matrix.limits }}/MP2${{ matrix.version }}${{ matrix.limits }}.bin 

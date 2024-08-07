@@ -41,7 +41,7 @@
 #define LISP_MEM_BITMAP_SIZE		LBM_MEMORY_BITMAP_SIZE_18K
 #define GC_STACK_SIZE				160
 #define PRINT_STACK_SIZE			128
-#define EXTENSION_STORAGE_SIZE		290
+#define EXTENSION_STORAGE_SIZE		295
 #define EXT_LOAD_CALLBACK_LEN		20
 #define PROF_DATA_NUM				30
 
@@ -318,8 +318,9 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				commands_printf_lisp("Marked: %d\n", lbm_heap_state.gc_marked);
 				commands_printf_lisp("GC SP max: %u (size %u)\n", lbm_heap_state.gc_stack.max_sp, lbm_heap_state.gc_stack.size);
 				commands_printf_lisp("--(Symbol and Array memory)--\n");
-				commands_printf_lisp("Memory size: %u Words\n", lbm_memory_num_words());
-				commands_printf_lisp("Memory free: %u Words\n", lbm_memory_num_free());
+				commands_printf_lisp("Memory size: %u bytes\n", lbm_memory_num_words() * 4);
+				commands_printf_lisp("Memory free: %u bytes\n", lbm_memory_num_free() * 4);
+				commands_printf_lisp("Longest block free: %u bytes\n", lbm_memory_longest_free() * 4);
 				commands_printf_lisp("Allocated arrays: %u\n", lbm_heap_state.num_alloc_arrays);
 				commands_printf_lisp("Symbol table size: %u Bytes\n", lbm_get_symbol_table_size());
 				commands_printf_lisp("Symbol table size flash: %u Bytes\n", lbm_get_symbol_table_size_flash());

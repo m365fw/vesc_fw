@@ -1,4 +1,3 @@
-
 /*
     Copyright 2018, 2024 Joel Svensson        svenssonjoel@yahoo.se
 
@@ -389,6 +388,20 @@ int64_t lbm_dec_as_i64(lbm_value val);
  * \return The value encoded in val casted to a float. Returns 0 if val does not encode a number.
  */
 double lbm_dec_as_double(lbm_value val);
+
+/** Decode a numerical value into the architecture defined unsigned integer type.
+ *
+ * \param val Value to decode
+ * \return The value encoded in val casted to an unsigned int. Returns 0 if val does not encode a number.
+ */
+lbm_uint lbm_dec_as_uint(lbm_value val);
+
+/** Decode a numerical value into the architecture defined signed integer type.
+ *
+ * \param val Value to decode
+ * \return The value encoded in val casted to a signed int. Returns 0 if val does not encode a number.
+ */
+lbm_int lbm_dec_as_int(lbm_value val);
 
 lbm_uint lbm_dec_raw(lbm_value v);
 /** Allocates an lbm_cons_t cell from the heap and populates it.
@@ -897,7 +910,7 @@ static inline bool lbm_is_symbol(lbm_value exp) {
 }
 
 static inline bool lbm_is_symbol_nil(lbm_value exp) {
-  return !exp;// == ENC_SYM_NIL;
+  return !exp;
 }
 
 static inline bool lbm_is_symbol_true(lbm_value exp) {

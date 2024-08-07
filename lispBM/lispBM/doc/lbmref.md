@@ -59,7 +59,7 @@ So for example:
 
 **Note** that it is an absolute requirement to include a decimal when writing a floating point literal in LBM. 
 
-We are trying to make type conversions feel familar to people who are familiar with the C programming language. On a 32bit platform LBM numerical types are ordered according to: `byte < i < u < i32 < u32 < i64 < u64 < float < double`.  Operations such as `(+ a b)`, figures out the largest type according to the ordering above and converts all the values to this largest type. 
+We are trying to make type conversions feel familiar to people who know a bit of  C programming. On a 32bit platform LBM numerical types are ordered according to: `byte < i < u < i32 < u32 < i64 < u64 < float < double`.  Operations such as `(+ a b)`, figures out the largest type according to the ordering above and converts all the values to this largest type. 
 
 Example: 
 
@@ -87,7 +87,7 @@ The `type-of` operation can be used to query a value for its type. On the numeri
 
 ### Overflow behaviour
 
-Operations on fixed bitwidth mumerical types can lead to overflow. The ranges representable in 32bit LBMs integer types are the following: 
+Operations on fixed bitwidth numerical types can lead to overflow. The ranges representable in 32bit LBMs integer types are the following: 
 
    - `type-char`  : 0 - 255
    - `type-i`     : -134217728 - 1342177272
@@ -417,11 +417,246 @@ In LispBM the set of atoms consist of:
 
 In LispBM a pair of S-expressions is created by an application of `cons` as `(cons a b)` which creates the pair `(a . b)`. Convention is that `(e0 e1 ... eN)` = `(e0 . ( e1 . ... ( eN . nil)))`. 
 
+A structure such as `(e0 e1 ... eN)` is called a list. 
+
 ### The meaning (semantics) that LispBM imposes on S-Expressions
 
-The S-expressions from the previous section are just trees. The Lisp evaluator provides a computational interepretation for such trees. Not all trees make sense as lisp programs. This section is about those trees that do make sense and what they mean to the Lisp evaluator. 
+The S-expressions discussed in the previous section are merely tree structures. The Lisp evaluator provides a computational interpretation for these trees. However, not all trees are valid Lisp programs. This section focuses on those trees that do make sense as Lisp programs and their meaning to the Lisp evaluator. 
 
-TODO: Finish section. 
+**Values and expressions** 
+
+The LispBM evaluator transforms expressions into values. For instance, the expression  `(+ 1 2)` is evaluated to the value `3`. 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(+ 1 2)
+```
+
+
+</td>
+<td>
+
+```clj
+3
+```
+
+
+</td>
+</tr>
+</table>
+
+In LispBM the distinction between expressions and values is often blurred. For example, it is possible to write a function that returns a result that can itself be interpreted as code 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(defun mk-code (x) `(+ ,x 1))
+```
+
+
+</td>
+<td>
+
+```clj
+(closure (x) (append (quote (+)) (list x) (quote (1))) nil)
+```
+
+
+</td>
+</tr>
+<tr>
+<td>
+
+```clj
+(mk-code 10)
+```
+
+
+</td>
+<td>
+
+```clj
+(+ 10 1)
+```
+
+
+</td>
+</tr>
+</table>
+
+The result of evaluating `(mk-code 10)` is the list containing a `+`, `10` and `1`. This list is the value that `(mk-code 10)` evaluates to. Now, the result of `(mk-code 10)`, since it is valid lisp, can be evaluated. 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(eval (mk-code 10))
+```
+
+
+</td>
+<td>
+
+```clj
+11
+```
+
+
+</td>
+</tr>
+</table>
+
+In most cases this is quite natural and our functions will result in, Strings, lists and numbers that are easily and naturally understood as values. 
+
+Still, it is worthwhile to remember that values can be expressions and expressions can be values. 
+
+**Errors** 
+
+Some times evaluation is impossible. This could be because the program is malformed, a type mismatch or a division by zero (among many other possibilities). Errors terminate the evaluation of the expression. To recover from an error the programmer needs to explicitly `trap` it. 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(trap (/ 1 0))
+```
+
+
+</td>
+<td>
+
+```clj
+(exit-error division_by_zero)
+```
+
+
+</td>
+</tr>
+</table>
+
+**Environments** 
+
+LispBM expressions are evaluated in relation to a global and a local environment. An environment is a key-value store where the key is a lisp symbol and the value is any lisp value. 
+
+The rest of this section will now explain the meaning of LBM programs by informally showing **expressions**, what **values** they evaluate into and how they change and depend on the environments 
+
+**Atoms** 
+
+Some atoms, such as Numbers, Strings and byte arrays cannot be further evaluated. 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+10
+```
+
+
+</td>
+<td>
+
+```clj
+10
+```
+
+
+</td>
+</tr>
+<tr>
+<td>
+
+```clj
+"hello world"
+```
+
+
+</td>
+<td>
+
+```clj
+hello world
+```
+
+
+</td>
+</tr>
+<tr>
+<td>
+
+```clj
+[1 2 3 4]
+```
+
+
+</td>
+<td>
+
+```clj
+[1 2 3 4]
+```
+
+
+</td>
+</tr>
+</table>
+
+Symbols evaluate by a lookup in the environment. First, the local environment is searched for a binding of the symbol. If unable to find a binding in the local environment, the global environment is searched. If unable to find a binding in the global environment as well, the runtime system attempts to dynamically load a binding using a system provided callback function. If all of the above fails to provide a value a `variable_not_bound` error is produced. 
+
+**Composite forms** 
+
+A composite form, such as `(e1 ... eN)` is evaluated in different ways depending on what `e1` is. There are three major categories that `e1` can fall into. Either `e1` is something that represents a function and `(e1 ... eN)` is a function application. Or `e1` is a so-called *special-form* that form the core of the LBM language. Or lastly, `e1` is anything else and the composite form is malformed and will ultimately result in an error. 
+
+The composite form `(e1 ... eN)` is evaluated by first checking if `e1` is a special form or not. if `e1` is a special form the composite form is passed to a special-form evaluator. if `e1` is not a special form,  the composite form is evaluated as a function application. These two major branches of composite form evaluation are described below. 
+
+**Special form evaluation** 
+
+Below are a selection of basic special-forms in lispBM together with their evaluation process 
+
+   - **quote**: `(quote a)` evaluates to a for any a
+   - **define**: `(define s e)`, `e` is evaluated into `v` and the global environment is augmented with the pair `(s . v)`
+   - **lambda**: `(lambda params body)` is evaluated into '(closure params body env)`. `env` is the local environment there the lambda expression is evaluated.
+   - **if**: `(if e1 e2 e3)` is evaluated by evaluating `e1` into `v1` if `v1` is nil, `e3` is evaluated otherwise `e2` is evaluated.
+   - **progn**: `(progn e1 e2 ... eN)` is evaluated by evaluating `e1` then `e2` and so on until `eN`. The value `v` that `eN` evaluats into is the value `(progn e1 e2 ... eN)` evaluates to.
+   - **and**: `(and e1 e2 ... eN)` evaluates the `eI` expressions from left to right as long as they result in a non-nil value.
+   - **or**: `(or e1 e2 ... eN)` evaluates the `eI` expressions from left to right until there is a non-nil result.
+
+`and`, `or`, `progn` and `if` evaluates expressions in sequence. `if` evaluates first the condition expression and then either the true or false branch. `progn` evaluates all of the expressions in sequence. In the case of `and`, `or`, `progn` and `if`, the constituent expressions are all evaluated in the same local environment. Any extensions to the local environment performed by an expresison in the sequence is only visible within that expression itself. 
+
+   - **let**: `(let ((s1 e1) (s2 e2) ... (sN eN) e)` eI are evaluated in order into `vI`. The local environment is extended with `(sI . vI)`. `sI` is visible in `eJ` for `J >= I`. `e` is then evaluated in the extended local environment.
+   - **setq**: `(setq s e)' is evaluated by first evaluating `e` into `v`. The environments are then scanned for a bining of `s`. local environment is searched first followed by global. If a binding of `s` is found it is modified into `(s . v)`.
+
+If no binding of `s` is found when evaluating `(setq s e)` a `variable_not_bound` error is triggered. 
+
+**Function application evaluation** 
+
+The evaluation strategies explained here are applied to composite expressions of the `(e1 ... eN)` form. 
+
+**The quote and the quasiquote** 
+
+The LBM parser (Reader) expands usages of the character sequences: `'`, `` ` ``, `,` and `,@`. The `'` as in `'a` is expanded into `(quote a)` for any a. The remaining `` ` ``, `,` and `,@` are expanded into applications of `quote`, `append` and `cons` using the algorithms described by Bawden in [quasiquotation in lisp](https://brics.dk/NS/99/1/BRICS-NS-99-1.pdf#page=6). 
 
 ### Concurrency and Semantics
 
@@ -4759,6 +4994,60 @@ Parses and evaluates a program incrementally. `read-eval-program` reads a top-le
 
 ---
 
+
+### trap
+
+`trap` lets you catch an error rather than have the evaluation context terminate. The form of a trap expression is `(trap expr)`. If expr crashes with an error `e` then `(trap expr)` evaluates to `(exit-error e)`. If expr successfully runs and returns `r`, then `(trap expr)` evaluates to (exit-ok r). 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(trap (/ 1 0))
+```
+
+
+</td>
+<td>
+
+```clj
+(exit-error division_by_zero)
+```
+
+
+</td>
+</tr>
+<tr>
+<td>
+
+```clj
+(trap (+ 1 2))
+```
+
+
+</td>
+<td>
+
+```clj
+(exit-ok 3)
+```
+
+
+</td>
+</tr>
+</table>
+
+`trap` catches any error except for fatal errors. A fatal error will still lead to the context being terminated. 
+
+
+
+
+---
+
 ## Lists and cons cells
 
 Lists are built using cons cells. A cons cell is represented by the lbm_cons_t struct in the implementation and consists of two fields named the `car` and the `cdr`. There is no special meaning associated with the `car` and the `cdr` each can hold a lbm_value. See <a href="#cons">cons</a> and <a href="#list">list</a> for two ways to create structures of cons cells on the heap. 
@@ -6982,7 +7271,7 @@ Use `self` to obtain the thread-id of the thread in which `self` is evaluated. T
 <td>
 
 ```clj
-636
+654
 ```
 
 
@@ -7021,6 +7310,40 @@ To put a process to sleep, call `yield`. The argument to `yield` is number indic
 
 ```clj
 (yield 10)
+```
+
+
+</td>
+<td>
+
+```clj
+t
+```
+
+
+</td>
+</tr>
+</table>
+
+
+
+
+---
+
+
+### sleep
+
+'sleep' puts a thread to sleep and differs from 'yield' only in the argument. 'sleep' takes a floating point number indicating how long in seconds the thread should sleep at least. 
+
+<table>
+<tr>
+<td> Example </td> <td> Result </td>
+</tr>
+<tr>
+<td>
+
+```clj
+(sleep 1.000000f32)
 ```
 
 
@@ -7596,6 +7919,8 @@ If an error occurs while evaluating a program, the process that runs that progra
 If the process was created using `spawn` (or equivalently, started by a issuing a command in the repl), the process dies and an error message is presented over the registered printing callback (dependent on how LispBM is integrated into your system). The `ctx_done_callback` is also called and performs other integration dependent tasks related to the shutting down of a process. 
 
 If the process was created using `spawn-trap`, in addition to the above, a message is sent to the parent process (the process that executed the spawn-trap) containing information about the process that struck an error. See <a href="#spawn-trap">spawn-trap</a>. The parent process can now choose to restart the process that crashed or to take some other action. 
+
+Another way to catch errors is to use `trap` which works similar to `spawn-trap` but it does not spawn a thread. `trap` takes one argument which is an expressions. The expression is evaluated and if it fails `(trap expr)` returns an object representing the error. For more information on `trap`, see  <a href="#trap">trap</a>. 
 
 
 ### read_error
@@ -8461,5 +8786,5 @@ Convert any numerical value to a double precision floating point value. If the i
 
 ---
 
-This document was generated by LispBM version 0.23.0 
+This document was generated by LispBM version 0.24.0 
 

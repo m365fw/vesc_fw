@@ -124,18 +124,25 @@ lbm_value lbm_enc_float(float x) {
 #endif
 }
 
-lbm_value lbm_enc_i64(int64_t x) {
-#ifndef LBM64
+static lbm_value enc_64_on_32(uint8_t *source, lbm_uint type_qual, lbm_uint type) {
   lbm_value res = ENC_SYM_MERROR;
-  lbm_uint* storage = lbm_memory_allocate(2);// why 2 ?
-  if (storage) {
-    res = lbm_cons((lbm_uint)storage, ENC_SYM_IND_I_TYPE);
-    if (lbm_type_of(res) != LBM_TYPE_SYMBOL) {
-      memcpy(storage,&x, 8);
-      res = lbm_set_ptr_type(res, LBM_TYPE_I64);
+  res = lbm_cons(ENC_SYM_NIL,ENC_SYM_NIL);
+  if (lbm_type_of(res) != LBM_TYPE_SYMBOL) {
+    uint8_t* storage = lbm_malloc(sizeof(uint64_t));
+    if (storage) {
+      memcpy(storage,source, sizeof(uint64_t));
+      lbm_set_car_and_cdr(res, (lbm_uint)storage,  type_qual);
+      res = lbm_set_ptr_type(res, type);
+    } else {
+      res = ENC_SYM_MERROR;
     }
   }
   return res;
+}
+
+lbm_value lbm_enc_i64(int64_t x) {
+#ifndef LBM64
+  return enc_64_on_32((uint8_t *)&x, ENC_SYM_IND_I_TYPE, LBM_TYPE_I64);
 #else
   lbm_value u = lbm_cons((uint64_t)x, ENC_SYM_RAW_I_TYPE);
   if (lbm_type_of(u) == LBM_TYPE_SYMBOL) return u;
@@ -145,16 +152,7 @@ lbm_value lbm_enc_i64(int64_t x) {
 
 lbm_value lbm_enc_u64(uint64_t x) {
 #ifndef LBM64
-  lbm_value res = ENC_SYM_MERROR;
-  uint8_t* storage = lbm_malloc(sizeof(uint64_t));
-  if (storage) {
-    res = lbm_cons((lbm_uint)storage, ENC_SYM_IND_U_TYPE);
-    if (lbm_type_of(res) != LBM_TYPE_SYMBOL) {
-      memcpy(storage,&x, sizeof(uint64_t));
-      res = lbm_set_ptr_type(res, LBM_TYPE_U64);
-    }
-  }
-  return res;
+  return enc_64_on_32((uint8_t *)&x, ENC_SYM_IND_U_TYPE, LBM_TYPE_U64);
 #else
   lbm_value u = lbm_cons(x, ENC_SYM_RAW_U_TYPE);
   if (lbm_type_of(u) == LBM_TYPE_SYMBOL) return u;
@@ -164,16 +162,7 @@ lbm_value lbm_enc_u64(uint64_t x) {
 
 lbm_value lbm_enc_double(double x) {
 #ifndef LBM64
-  lbm_value res = ENC_SYM_MERROR;
-  lbm_uint* storage = lbm_memory_allocate(2);
-  if (storage) {
-    res = lbm_cons((lbm_uint)storage, ENC_SYM_IND_F_TYPE);
-    if (lbm_type_of(res) != LBM_TYPE_SYMBOL) {
-      memcpy(storage,&x, 8);
-      res = lbm_set_ptr_type(res, LBM_TYPE_DOUBLE);
-    }
-  }
-  return res;
+  return enc_64_on_32((uint8_t *)&x, ENC_SYM_IND_F_TYPE, LBM_TYPE_DOUBLE);
 #else
   lbm_uint t;
   memcpy(&t, &x, sizeof(double));
@@ -182,6 +171,10 @@ lbm_value lbm_enc_double(double x) {
   return lbm_set_ptr_type(f, LBM_TYPE_DOUBLE);
 #endif
 }
+
+// Type specific (as opposed to the dec_as_X) functions
+// should only be run on values KNOWN to represent a value of the type
+// that the decoder decodes.
 
 float lbm_dec_float(lbm_value x) {
 #ifndef LBM64
@@ -201,7 +194,6 @@ double lbm_dec_double(lbm_value x) {
 #ifndef LBM64
   double d;
   uint32_t *data = (uint32_t*)lbm_car(x);
-  if (data == NULL) return 0; // no good way to report error from here currently.
   memcpy(&d, data, sizeof(double));
   return d;
 #else
@@ -216,7 +208,6 @@ uint64_t lbm_dec_u64(lbm_value x) {
 #ifndef LBM64
   uint64_t u;
   uint32_t *data = (uint32_t*)lbm_car(x);
-  if (data == NULL) return 0;
   memcpy(&u, data, 8);
   return u;
 #else
@@ -228,7 +219,6 @@ int64_t lbm_dec_i64(lbm_value x) {
 #ifndef LBM64
   int64_t i;
   uint32_t *data = (uint32_t*)lbm_car(x);
-  if (data == NULL) return 0;
   memcpy(&i, data, 8);
   return i;
 #else
@@ -238,11 +228,10 @@ int64_t lbm_dec_i64(lbm_value x) {
 
 char *lbm_dec_str(lbm_value val) {
   char *res = 0;
+  // If val is an array, car of val will be non-null.
   if (lbm_is_array_r(val)) {
     lbm_array_header_t *array = (lbm_array_header_t *)lbm_car(val);
-    if (array) {
-        res = (char *)array->data;
-    }
+    res = (char *)array->data;
   }
   return res;
 }
@@ -380,6 +369,54 @@ uint64_t lbm_dec_as_u64(lbm_value a) {
     return (uint64_t) lbm_dec_u64(a);
   case LBM_TYPE_DOUBLE:
     return (uint64_t) lbm_dec_double(a);
+  }
+  return 0;
+}
+
+lbm_uint lbm_dec_as_uint(lbm_value a) {
+  switch (lbm_type_of_functional(a)) {
+  case LBM_TYPE_CHAR:
+    return (lbm_uint) lbm_dec_char(a);
+  case LBM_TYPE_I:
+    return (lbm_uint) lbm_dec_i(a);
+  case LBM_TYPE_U:
+    return (lbm_uint) lbm_dec_u(a);
+  case LBM_TYPE_I32:
+    return (lbm_uint) lbm_dec_i32(a);
+  case LBM_TYPE_U32:
+    return (lbm_uint) lbm_dec_u32(a);
+  case LBM_TYPE_FLOAT:
+    return (lbm_uint) lbm_dec_float(a);
+  case LBM_TYPE_I64:
+    return (lbm_uint) lbm_dec_i64(a);
+  case LBM_TYPE_U64:
+    return (lbm_uint) lbm_dec_u64(a);
+  case LBM_TYPE_DOUBLE:
+    return (lbm_uint) lbm_dec_double(a);
+  }
+  return 0;
+}
+
+lbm_int lbm_dec_as_int(lbm_value a) {
+  switch (lbm_type_of_functional(a)) {
+  case LBM_TYPE_CHAR:
+    return (lbm_int) lbm_dec_char(a);
+  case LBM_TYPE_I:
+    return (lbm_int) lbm_dec_i(a);
+  case LBM_TYPE_U:
+    return (lbm_int) lbm_dec_u(a);
+  case LBM_TYPE_I32:
+    return (lbm_int) lbm_dec_i32(a);
+  case LBM_TYPE_U32:
+    return (lbm_int) lbm_dec_u32(a);
+  case LBM_TYPE_FLOAT:
+    return (lbm_int)lbm_dec_float(a);
+  case LBM_TYPE_I64:
+    return (lbm_int) lbm_dec_i64(a);
+  case LBM_TYPE_U64:
+    return (lbm_int) lbm_dec_u64(a);
+  case LBM_TYPE_DOUBLE:
+    return (lbm_int) lbm_dec_double(a);
   }
   return 0;
 }
@@ -857,9 +894,8 @@ lbm_value lbm_car(lbm_value c){
     return cell->car;
   }
 
-  if (lbm_type_of(c) == LBM_TYPE_SYMBOL &&
-      c == ENC_SYM_NIL) {
-    return ENC_SYM_NIL; // if nil, return nil.
+  if (lbm_is_symbol_nil(c)) {
+    return c; // if nil, return nil.
   }
 
   return ENC_SYM_TERROR;
@@ -878,10 +914,10 @@ lbm_value lbm_caar(lbm_value c) {
 
     if (lbm_is_ptr(tmp)) {
       return lbm_ref_cell(tmp)->car;
-    } else if (lbm_is_symbol(tmp) && tmp == ENC_SYM_NIL) {
+    } else if (lbm_is_symbol_nil(tmp)) {
       return tmp;
     }
-  } else if (lbm_is_symbol(c) && c == ENC_SYM_NIL) {
+  } else if (lbm_is_symbol_nil(c)){
     return c;
   }
   return ENC_SYM_TERROR;
@@ -897,38 +933,34 @@ lbm_value lbm_cadr(lbm_value c) {
 
     if (lbm_is_ptr(tmp)) {
       return lbm_ref_cell(tmp)->car;
-    } else if (lbm_is_symbol(tmp) && tmp == ENC_SYM_NIL) {
+    } else if (lbm_is_symbol_nil(tmp)) {
       return tmp;
     }
-  } else if (lbm_is_symbol(c) && c == ENC_SYM_NIL) {
+  } else if (lbm_is_symbol_nil(c)) {
     return c;
   }
   return ENC_SYM_TERROR;
 }
 
 lbm_value lbm_cdr(lbm_value c){
-
-  if (lbm_type_of(c) == LBM_TYPE_SYMBOL &&
-      c == ENC_SYM_NIL) {
-    return ENC_SYM_NIL; // if nil, return nil.
-  }
-
   if (lbm_is_ptr(c)) {
     lbm_cons_t *cell = lbm_ref_cell(c);
     return cell->cdr;
+  }
+  if (lbm_is_symbol_nil(c)) {
+    return ENC_SYM_NIL; // if nil, return nil.
   }
   return ENC_SYM_TERROR;
 }
 
 lbm_value lbm_cddr(lbm_value c) {
-
   if (lbm_is_ptr(c)) {
     lbm_value tmp = lbm_ref_cell(c)->cdr;
     if (lbm_is_ptr(tmp)) {
       return lbm_ref_cell(tmp)->cdr;
     }
   }
-  if (lbm_is_symbol(c) && c == ENC_SYM_NIL) {
+  if (lbm_is_symbol_nil(c)) {
     return ENC_SYM_NIL;
   }
   return ENC_SYM_TERROR;
@@ -1155,6 +1187,7 @@ int lbm_heap_allocate_array_base(lbm_value *res, bool byte_array, lbm_uint size)
   if (lbm_type_of(cell) == LBM_TYPE_SYMBOL) { // Out of heap memory
     lbm_memory_free((lbm_uint*)array->data);
     lbm_memory_free((lbm_uint*)array);
+    *res = ENC_SYM_MERROR;
     return 0;
   }
 
@@ -1172,7 +1205,7 @@ int lbm_heap_allocate_lisp_array(lbm_value *res, lbm_uint size) {
 }
 
 // Convert a C array into an lbm_array.
-// if the array is in LBM_MEMORY, the lifetime will be managed by the GC.
+// if the array is in LBM_MEMORY, the lifetime will be managed by the GC after lifting.
 int lbm_lift_array(lbm_value *value, char *data, lbm_uint num_elt) {
 
   lbm_array_header_t *array = NULL;
@@ -1218,9 +1251,6 @@ const uint8_t *lbm_heap_array_get_data_ro(lbm_value arr) {
   uint8_t *r = NULL;
   if (lbm_is_array_r(arr)) {
     lbm_array_header_t *header = (lbm_array_header_t*)lbm_car(arr);
-    if (header == NULL) {
-      return r;
-    }
     r = (uint8_t*)header->data;
   }
   return r;
@@ -1230,9 +1260,6 @@ uint8_t *lbm_heap_array_get_data_rw(lbm_value arr) {
   uint8_t *r = NULL;
   if (lbm_is_array_rw(arr)) {
     lbm_array_header_t *header = (lbm_array_header_t*)lbm_car(arr);
-    if (header == NULL) {
-      return r;
-    }
     r = (uint8_t*)header->data;
   }
   return r;

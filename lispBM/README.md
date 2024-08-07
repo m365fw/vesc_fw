@@ -313,6 +313,20 @@ Start or stop balancing. 1 means start and 0 means stop.
 
 ---
 
+#### bms-zero-offset
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(bms-zero-offset)
+```
+
+Zero current measurement offset on BMS. Has to be done while no current (or charge-current on charge-only BMS) is flowing. Will be sent to every BMS on the CAN-bus.
+
+---
+
 #### get-adc
 
 | Platforms | Firmware |
@@ -2975,6 +2989,20 @@ Sends a sequence of bits in an attempt to restore the i2c-bus. Can be used if an
 
 ---
 
+#### i2c-detect-addr
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(i2c-detect-addr address)
+```
+
+Test if address is present on the bus by writing to it and checking the nack-bit. Returns true if the address is present, nil otherwise. Can be used to detect if I2C-devices are plugged in and powered correctly.
+
+---
+
 #### imu-start-lsm6
 
 | Platforms | Firmware |
@@ -3086,6 +3114,34 @@ Write state to pin. If the pin is set to an output 1 will set it to VCC and 0 to
 ```
 
 Read state of pin. Returns 1 if the pin is high, 0 otherwise.
+
+---
+
+#### gpio-hold
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(gpio-hold pin state)
+```
+
+It state is 1, the state of pin will be locked to its state at the moment of the call. If state is 0 the pin will be unlocked. The state persists through reset, but not through deep sleep.
+
+---
+
+#### gpio-hold-deepsleep
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(gpio-hold-deepsleep state)
+```
+
+It state is 1, all digital pads will hold their state during deep sleep. If it is set to 0 they will reset to their initial state when entering deep sleep.
 
 ---
 
@@ -3327,6 +3383,16 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    10: OUT_AUX_MODE_MOSFET_70
                         ;    11: OUT_AUX_MODE_MOTOR_MOSFET_50
                         ;    12: OUT_AUX_MODE_MOTOR_MOSFET_70
+'m-motor-temp-sens-type ; Temperature sensor type (Added in FW 6.05). Options:
+                        ;    0:  TEMP_SENSOR_NTC_10K_25C
+                        ;    1:  TEMP_SENSOR_PTC_1K_100C
+                        ;    2:  TEMP_SENSOR_KTY83_122
+                        ;    3:  TEMP_SENSOR_NTC_100K_25C
+                        ;    4:  TEMP_SENSOR_KTY84_130
+                        ;    5:  TEMP_SENSOR_NTCX
+                        ;    6:  TEMP_SENSOR_PTCX
+                        ;    7:  TEMP_SENSOR_PT1000
+                        ;    8:  TEMP_SENSOR_DISABLED
 'foc-sensor-mode        ; FOC sensor mode
                         ;    0: FOC_SENSOR_MODE_SENSORLESS
                         ;    1: FOC_SENSOR_MODE_ENCODER
@@ -3372,8 +3438,10 @@ The following selection of app and motor parameters can be read and set from Lis
 'foc-sl-openloop-time   ; Stay in openloop for this amount of time
 'foc-temp-comp          ; Use observer temperature compensation
 'foc-temp-comp-base-temp ; Temperature at which parameters were measured
+'foc-offsets-cal-on-boot ; Measure offsets at boot (Added in FW 6.05)
 'foc-fw-current-max     ; Maximum field weakening current (Added in FW 6.05)
 'foc-fw-duty-start      ; Duty where field weakening starts (Added in FW 6.05)
+'foc-short-ls-on-zero-duty ; Short low-side FETs on 0 duty (Added in FW 6.05)
 'min-speed              ; Minimum speed in meters per second (a negative value)
 'max-speed              ; Maximum speed in meters per second
 'app-to-use             ; App to use
@@ -3399,6 +3467,16 @@ The following selection of app and motor parameters can be read and set from Lis
                         ; 6: 50K
                         ; 7: 75K
                         ; 8: 100K
+'can-status-rate-1      ; CAN status rate 1 in Hz (Added in FW 6.05)
+'can-status-msgs-r1     ; Bitfield with the status messages (Added in FW 6.05)
+                        ; Bit0: Status 1 (RPM, Current, Duty)
+                        ; Bit1: Status 2 (Ah Used, Ah Charged)
+                        ; Bit2: Status 3 (Wh Used, Wh Charged)
+                        ; Bit3: Status 4 (T FET, T Mot, I In, PID pos)
+                        ; Bit4: Status 5 (V In, Tacho)
+                        ; Bit5: Status 6 (ADC1, ADC2, ADC3, PPM)
+'can-status-rate-2      ; CAN status rate 2 in Hz (Added in FW 6.05)
+'can-status-msgs-r2     ; See can-status-msgs-r1 (Added in FW 6.05)
 'ppm-ctrl-type          ; PPM Control Type
                         ;    0:  PPM_CTRL_TYPE_NONE
                         ;    1:  PPM_CTRL_TYPE_CURRENT
@@ -3471,6 +3549,7 @@ The following selection of app and motor parameters can be read and set from Lis
                         ; 0: Disabled
                         ; 1: Enabled
                         ; 2: Enabled and encrypted with pin
+                        ; 3: Enabled with scripting
 'ble-name               ; Device name (also the name that shows up in VESC Tool)
 'ble-pin                ; BLE pin code
 ```
@@ -4246,6 +4325,35 @@ Create a string from the number n. Also takes an optional format argument optFor
 
 ---
 
+#### str-join
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(str-join strings opt-delim)
+```
+
+Joins a list of strings into one, with an optional delimeter string placed
+between each.
+
+Note: Passing in an empty list returns `""`.
+
+Examples:
+```clj
+(str-join '("a" "b" "c"))
+> "abc"
+
+(str-join '("I" "love" "lispbm!") " ")
+> "I love lispbm!"
+
+(str-join '() " ")
+> ""
+```
+
+---
+
 #### str-merge
 
 | Platforms | Firmware |
@@ -4504,6 +4612,86 @@ Calculate length of string str excluding the null termination. Example:
 ```clj
 (str-len "Hello")
 > 5
+```
+
+---
+
+#### str-find
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.05+ |
+
+```clj
+(str-find str substr [start] [occurrence] [direction])
+```
+
+Finds the index of the first character of a substring `substr` in the string `str`,
+returning this index, or `-1` if it doesn't exist. `substr` can also be a list
+of strings, in which case a certain positon only needs to be equal to one of
+these substrings to be considered a match. If this list is empty, `-1` is always
+returned, and searching for an empty string returns the starting index.
+
+**Optional arguments:**  
+- `start`: Overrides which index the search starts at. May be negative, in which
+  case it specifies which index to start at from the end, with `-1` resulting in
+  starting at the last character of the string (See one of the examples below).
+  Defaults to 0 if searching to the right, otherwise to the end of the string
+  minus the length of `substr` if searching to the left. If it helps, the
+  formula is then `(- (+ (str-len str) 1) (str-len substr))`, if `substr` is a
+  list, the shortest string length is used.
+- `occurrence`: When given, this specifies how many matches to skip before
+  an index is returned, otherwise the index of the first is returned by default.
+- `direction`: The direction to perform the search in. One of the symbols `left`
+  or `right`. Defaults to `right`, starting from the first character. Can be passed
+  in an earlier position if `occurrence` and/or `start` are left out.
+
+It is valid if the resulting start index is outside the range of `str` (i.e.
+being smaller than 0 or larger than the size of `str`), in which case the
+expected behaviour is performed by either immediatly returning no match (`-1`)
+or skipping the index forward to the first potentially valid match (depending on
+the direction).
+
+**Note about byte arrays**  
+`str` is actually considered to be a byte array, meaning that the final
+terminating null byte is considered when searching. The final byte of `substr`
+is on the other hand removed before it is searched for. If you want to search
+for an abitrary byte sequence you must first increase the size of `substr` by
+one, for instance with `(buf-resize substr 1 'copy)`.
+Note however that since specifying `start` to be `-1` starts the search at the
+last character (which is the second to last byte in a null-terminated string),
+**it is impossible to specify that the search should start at the last byte**!
+(If you need that functionality, you'll unfortunately need to implement that
+yourself and only specify positive values for `start`.)  
+This function actually replaces `buf-find` which existed in earlier versions of
+v6.05. This version is almost backwards compatible, so you should be able to
+just search and replace `buf-find` with `str-find` for most cases. The only
+change is that the third argument `occurrence` has been moved to the fourth
+position (with `start` taking the third). So you'll need to replace
+`(buf-find buf seq x)` with `(str-find buf seq 0 x)` in this case.
+
+Examples:
+```clj
+(str-find "-str-" "str")
+> 1
+
+(str-find "-str-str-" "str" 0 1)
+> 5
+
+(str-find "-str-str-" "str" 2)
+> 5
+
+(str-find "-str-str-" "str" 'left)
+> 5
+
+(str-find "-ab-ab-" "ab" 5 'left)
+> 4
+
+(str-find "-ab-ba-" '("ba" "ab") 0 1)
+> 4
+
+(str-find "a--a" "a" -1 'left)
+> 3
 ```
 
 ---
@@ -4791,23 +4979,6 @@ This will clear the allocated memory for `arr`.
 
 **Note**  
 Strings in lispBM are treated the same as byte arrays, so all of the above can be done to the characters in strings too.
-
----
-
-#### buf-find
-
-| Platforms | Firmware |
-|---|---|
-| ESC, Express | 6.05+ |
-
-```clj
-(buf-find arr seq optOccurence)
-```
-
-Find position of `seq` in array `arr`. The optional argument optOccurence specifies which occurrence of `seq` to look for - if it is set to 0 or left out the position of the first occurrence will be returned. If `seq` is not found -1 will be returned.
-
-**NOTE**  
-The last byte in `seq` will be ignored as that is the null-terminator if `seq` is a string (which is the most common use case). If the match should be done on the last byte too `seq` can be padded with a dummy-byte.
 
 ---
 
@@ -5719,6 +5890,34 @@ Set wifi bandwidth in MHz. This function is experimental and should only be used
 
 ---
 
+#### wifi-stop
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(wifi-stop)
+```
+
+Stop wifi-driver. Reduces power consumption.
+
+---
+
+#### wifi-start
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(wifi-start)
+```
+
+Start wifi-driver. Re-connects to networks that were connected before. Can be used to restart wifi after sleep-light.
+
+---
+
 ### Receiving Data
 
 Events can be used to receive ESP-NOW data. This is best described with an example:
@@ -5768,6 +5967,20 @@ Connect SD-card on pin-mosi, pin-miso, pin-sck and pin-cs. The optional argument
 
 ---
 
+#### f-connect-nand
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(f-connect-nand pin-mosi pin-miso pin-sck pin-cs optSpiSpeed)
+```
+
+Connect NAND-flash memory on pin-mosi, pin-miso, pin-sck and pin-cs. The optional argument optSpiSpeed can be used to specify the SPI speed (default 20000 Hz). Returns true on success, nil otherwise.
+
+---
+
 #### f-disconnect
 
 | Platforms | Firmware |
@@ -5778,7 +5991,7 @@ Connect SD-card on pin-mosi, pin-miso, pin-sck and pin-cs. The optional argument
 (f-disconnect)
 ```
 
-Disconnect SD-card.
+Disconnect SD-card or NAND-Flash.
 
 ---
 
@@ -6582,7 +6795,21 @@ Example:
 (sleep-deep time)
 ```
 
-Put the CPU in deep sleep mode for time seconds. If time is negative the CPU will sleep forever, or until a wakeup pin triggers a wakeup.
+Put the CPU in deep sleep mode for time seconds. If time is negative the CPU will sleep forever, or until a wakeup pin triggers a wakeup. Waking up from sleep-deep results in a complete reset.
+
+---
+
+#### sleep-light
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(sleep-light time)
+```
+
+Put the CPU in light sleep mode for time seconds. Waking up will return to the point where sleep-light was called without a complete reset, but the power draw is much higher than for sleep-deep. Note that wifi and bluetooth are disabled when using this function, so they have to be enabled again when waking up.
 
 ---
 
@@ -6597,6 +6824,66 @@ Put the CPU in deep sleep mode for time seconds. If time is negative the CPU wil
 ```
 
 Configure pin to wake up the CPU from sleep mode. The available pins are 0 to 5 and state can be 0 or 1. 0 means that a low state wakes up the CPU and 1 means that a high state wakes up the CPU.
+
+---
+
+#### rtc-data
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(rtc-data)
+```
+
+Returns a 4k byte array from RTC memory that can be used as a general purpose array. What is special about it is that it is retained in deep sleep mode, which is useful for storing state while the CPU is in deep sleep mode.
+
+---
+
+## Connection Checks
+
+---
+
+#### connected-wifi
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(connected-wifi)
+```
+
+Check if any client (e.g. VESC Tool) is connected over wifi. Returns true when connected, nil otherwise.
+
+---
+´
+#### connected-ble
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(connected-ble)
+```
+
+Check if any client (e.g. VESC Tool) is connected over ble. Returns true when connected, nil otherwise.
+
+---
+
+#### connected-usb
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.05+ |
+
+```clj
+(connected-usb)
+```
+
+Check if any client (e.g. VESC Tool) is connected over usb. Returns true when connected, nil otherwise.
 
 ---
 

@@ -207,6 +207,7 @@ typedef bool (*load_extension_fptr)(char*,extension_fptr);
 
 typedef void* lib_thread;
 typedef void* lib_mutex;
+typedef void* lib_semaphore;
 
 typedef enum {
 	VESC_PIN_COMM_RX = 0,
@@ -277,6 +278,25 @@ typedef enum {
 	CFG_PARAM_IMU_rot_roll,
 	CFG_PARAM_IMU_rot_pitch,
 	CFG_PARAM_IMU_rot_yaw,
+	CFG_PARAM_IMU_ahrs_mode,
+	CFG_PARAM_IMU_sample_rate,
+	CFG_PARAM_IMU_accel_offset_x,
+	CFG_PARAM_IMU_accel_offset_y,
+	CFG_PARAM_IMU_accel_offset_z,
+	CFG_PARAM_IMU_gyro_offset_x,
+	CFG_PARAM_IMU_gyro_offset_y,
+	CFG_PARAM_IMU_gyro_offset_z,
+
+	CFG_PARAM_app_shutdown_mode,
+
+	// Motor Additional Info
+	CFG_PARAM_si_motor_poles,
+	CFG_PARAM_si_gear_ratio,
+	CFG_PARAM_si_wheel_diameter,
+	CFG_PARAM_si_battery_type,
+	CFG_PARAM_si_battery_cells,
+	CFG_PARAM_si_battery_ah,
+	CFG_PARAM_si_motor_nl_current,
 } CFG_PARAM;
 
 typedef struct {
@@ -538,7 +558,7 @@ typedef struct {
 	volatile gnss_data* (*mc_gnss)(void);
 
 	// Mutex
-	lib_mutex (*mutex_create)(void);
+	lib_mutex (*mutex_create)(void); // Use VESC_IF->free on the mutex when done with it
 	void (*mutex_lock)(lib_mutex);
 	void (*mutex_unlock)(lib_mutex);
 
@@ -629,6 +649,13 @@ typedef struct {
 	bool (*foc_set_audio_sample_table)(int channel, float *samples, int len);
 	const float* (*foc_get_audio_sample_table)(int channel);
 	bool (*foc_play_audio_samples)(const int8_t *samples, int num_samp, float f_samp, float voltage);
+
+	// Semaphore
+	lib_semaphore (*sem_create)(void); // Use VESC_IF->free on the semaphore when done with it
+	void (*sem_wait)(lib_semaphore);
+	void (*sem_signal)(lib_semaphore);
+	bool (*sem_wait_to)(lib_semaphore, systime_t); // Returns false on timeout
+	void (*sem_reset)(lib_semaphore);
 } vesc_c_if;
 
 typedef struct {

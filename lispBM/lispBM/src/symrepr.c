@@ -81,6 +81,7 @@ special_sym const special_symbols[] =  {
   {"trap"         , SYM_TRAP},
   {"rest-args"    , SYM_REST_ARGS},
   {"rotate"       , SYM_ROTATE},
+  {"call-cc-unsafe", SYM_CALL_CC_UNSAFE},
 
   // pattern matching
   {"?"          , SYM_MATCH_ANY},
@@ -107,9 +108,12 @@ special_sym const special_symbols[] =  {
   {"$ind_f"          , SYM_IND_F_TYPE},
   {"$channel"        , SYM_CHANNEL_TYPE},
   {"$recovered"      , SYM_RECOVERED},
+  {"$placeholder"    , SYM_PLACEHOLDER},
   {"$custom"         , SYM_CUSTOM_TYPE},
   {"$array"          , SYM_LISPARRAY_TYPE},
   {"$nonsense"       , SYM_NONSENSE},
+  {"$dm-array"       , SYM_DEFRAG_ARRAY_TYPE},
+  {"$dm"             , SYM_DEFRAG_MEM_TYPE},
 
   // tokenizer symbols with unparsable names
   {"[openpar]"        , SYM_OPENPAR},
@@ -126,6 +130,8 @@ special_sym const special_symbols[] =  {
   {"[closebrack]"     , SYM_CLOSEBRACK},
   {"[rerror]"         , SYM_TOKENIZER_RERROR},
   {"[appcont]"        , SYM_APP_CONT},
+  {"[openarr]"        , SYM_OPENARRAY},
+  {"[closearr]"       , SYM_CLOSEARRAY},
 
   // special symbols with parseable names
   {"type-list"        , SYM_TYPE_LIST},
@@ -143,12 +149,15 @@ special_sym const special_symbols[] =  {
   {"type-byte"        , SYM_TYPE_BYTE},
   {"type-channel"     , SYM_TYPE_CHANNEL},
   {"type-lisparray"   , SYM_TYPE_LISPARRAY},
+  {"type-dm"          , SYM_TYPE_DEFRAG_MEM},
+  {"type-custom"      , SYM_TYPE_CUSTOM},
 
   // Fundamental operations
   {"+"                , SYM_ADD},
   {"-"                , SYM_SUB},
   {"*"                , SYM_MUL},
   {"/"                , SYM_DIV},
+  {"//"               , SYM_INT_DIV},
   {"mod"              , SYM_MOD},
   {"="                , SYM_NUMEQ},
   {"!="               , SYM_NUM_NOT_EQ},
@@ -216,11 +225,19 @@ special_sym const special_symbols[] =  {
   {"take"           , SYM_TAKE},
   {"drop"           , SYM_DROP},
   {"mkarray"        , SYM_MKARRAY},
-  {"array-to-list"  , SYM_ARRAY_TO_LIST},
-  {"list-to-array"  , SYM_LIST_TO_ARRAY},
+
+  {"dm-create"      , SYM_DM_CREATE},
+  {"dm-alloc"       , SYM_DM_ALLOC},
+
+  {"list?"          , SYM_IS_LIST},
+  {"number?"        , SYM_IS_NUMBER},
+  {"string?"        , SYM_IS_STRING},
 
   // fast access in list
   {"ix"             , SYM_IX},
+
+  {"identity"       , SYM_IDENTITY},
+  {"array"          , SYM_ARRAY},
 
   // aliases
   {"first"          , SYM_CAR},
@@ -233,6 +250,7 @@ special_sym const special_symbols[] =  {
   {"type-f32"       , SYM_TYPE_FLOAT},
   {"type-f64"       , SYM_TYPE_DOUBLE},
   {"array-create"   , SYM_BYTEARRAY_CREATE},
+
 };
 
 static lbm_uint *symlist = NULL;
@@ -376,30 +394,41 @@ static bool store_symbol_name_flash(char *name, lbm_uint *res) {
   return true;
 }
 
+// Symbol table
+// non-const name copied into symbol-table-entry:
+// Entry
+//   |
+//   [name-ptr | symbol-id | next-ptr | name n-bytes]
+//       |                             /
+//        ------------points here -----
+//
+// const name referenced by symbol-table-entry:
+// Entry
+//   |
+//   [name-ptr | symbol-id | next-ptr]
+//       |
+//        [name n-bytes]
+//
 static bool add_symbol_to_symtab(char* name, lbm_uint id) {
+  bool r = false;
   size_t n = strlen(name) + 1;
-  if (n == 1) return 0; // failure if empty symbol
+  if (n > 1 && n <= 257) {
+    size_t alloc_size = n + (3 * sizeof(lbm_uint));
+    char *storage = lbm_malloc(alloc_size);
+    if (storage) {
+      memcpy(storage + (3 * sizeof(lbm_uint)), name, n);
+      lbm_uint *m = (lbm_uint*)storage;
 
-  lbm_uint alloc_size;
-  if (n % sizeof(lbm_uint) == 0) {
-    alloc_size = n/(sizeof(lbm_uint));
-  } else {
-    alloc_size = (n/(sizeof(lbm_uint))) + 1;
+      symbol_table_size_list += 3 * sizeof(lbm_uint); // Bytes
+      symbol_table_size_strings += n; // Bytes
+      m[NAME] = (lbm_uint)&m[3];
+      m[NEXT] = (lbm_uint) symlist;
+      symlist = m;
+      m[ID] =id;
+      r = true;
+    }
   }
-
-  lbm_uint *storage = lbm_memory_allocate(alloc_size + 3);
-  if (storage == NULL) return false;
-  strncpy(((char*)storage) + (3 * sizeof(lbm_uint)), name, n);
-  lbm_uint *m = storage;
-
-  if (m == NULL) return false;
-
-  symbol_table_size_list += 3;
-  m[NAME] = (lbm_uint)&storage[3];
-  m[NEXT] = (lbm_uint) symlist;
-  symlist = m;
-  m[ID] =id;
-  return true;
+  return r;
 }
 
 static bool add_symbol_to_symtab_flash(lbm_uint name, lbm_uint id) {
@@ -484,8 +513,7 @@ int lbm_str_to_symbol(char *name, lbm_uint *sym_id) {
 }
 
 lbm_uint lbm_get_symbol_table_size(void) {
-  return (symbol_table_size_list +
-          symbol_table_size_strings) * sizeof(lbm_uint);
+  return (symbol_table_size_list +symbol_table_size_strings);
 }
 
 lbm_uint lbm_get_symbol_table_size_flash(void) {
@@ -494,7 +522,7 @@ lbm_uint lbm_get_symbol_table_size_flash(void) {
 }
 
 lbm_uint lbm_get_symbol_table_size_names(void) {
-  return symbol_table_size_strings * sizeof(lbm_uint);
+  return symbol_table_size_strings; // Bytes already
 }
 
 lbm_uint lbm_get_symbol_table_size_names_flash(void) {

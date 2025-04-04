@@ -1,320 +1,4 @@
 
-(defun is-read-eval-txt (x)
-  (match x
-         ( (read-eval . _) true)
-         (_ false)))
-
-(defun pretty (c)
-  (pretty-ind 0 c))
-
-(defun ind-spaces (n)
-  (str-replicate n 32b))
-
-(defun pretty-ind (n c)
-  (match c
-         ( (loop (? e) . (? es))
-           (str-merge (ind-spaces n) "(loop " (pretty e) (pretty-aligned-ontop (+ n 6) es) ")" ))
-         ( (atomic (? e) . (? es))
-           (str-merge (ind-spaces n) "(atomic " (pretty e) (pretty-aligned-ontop (+ n 8) es) ")" ))
-         ( (recv  (? e) . (? es))
-           (str-merge (ind-spaces n) "(recv " (pretty e) (pretty-aligned-ontop (+ n 6) es) ")" ))
-         ( (recv-to  (? e) . (? es))
-           (str-merge (ind-spaces n) "(recv-to " (pretty e) (pretty-aligned-ontop (+ n 9) es) ")" ))
-         ( (match (? e) . (? es))
-           (str-merge (ind-spaces n) "(match " (pretty e) (pretty-aligned-ontop (+ n 7) es) ")" ))
-         ( (progn (? e ) . (? es))
-           (str-merge (ind-spaces n) "(progn " (pretty e) (pretty-aligned-ontop (+ n 7) es) ")" ))
-         ( (quote (? e)) (str-merge (ind-spaces n) "'" (pretty e)))
-         ( (let ((? b0) . (? brest)) (? body)) ;; pattern
-           (str-merge (ind-spaces n)
-                      "(let ("
-
-                      (pretty b0)
-                      (pretty-aligned-ontop (+ n 6) brest)
-                      ")\n"
-
-                      (pretty-ind (+ n 5) body)
-                      ")"
-                      ))
-         ( (cond (? x) . (? xs) )
-           (let ( (conds (pretty-aligned-ontop (+ n 6) xs))
-                  (cond0 (pretty x)))
-             (str-merge (ind-spaces n) "(cond " cond0 conds ")")
-             )
-           )
-         ( ((? x) . (? xs)) (str-merge (ind-spaces n) "(" (pretty x) (pretty-list xs) ")" ))
-         (_ (str-merge (ind-spaces n) (to-str c))))
-  )
-
-(defun pretty-list (c)
-  (match c
-         ( nil "" )
-         ( ((? x) . nil) (str-merge " " (pretty x) ))
-         ( ((? x) . (? y))
-           (if (eq (type-of y) type-list)
-               (str-merge " " (pretty x) (pretty-list y))
-             (str-merge " " (pretty x) "." (pretty y)))
-           )
-         ( (? x) (str-merge " . " (pretty x)))))
-
-(defun pretty-aligned-ontop (n cs)
-  (match cs
-         (nil "")
-         ( ( (? x ) . (? xs))
-           (str-merge "\n" (pretty-ind n x) (pretty-aligned-ontop n xs))))
-  )
-
-(defun render-code-res-pairs (rend cs)
-  (match cs
-         (nil t)
-         ( ((? x) . (? xs))
-           (let ((x-str (if (is-read-eval-txt x)
-                            (ix x 1)
-                          (pretty x)))
-                 (x-code (if (is-read-eval-txt x)
-                             (read (ix x 1))
-                           x))
-                 (res (eval nil x-code))
-                 (rstr (to-str res)))
-             {
-             (rend "<tr>\n")
-             (rend "<td>\n\n")
-             (rend "```clj\n")
-             (rend x-str)
-             (rend "\n```\n")
-             (rend "\n\n</td>\n")
-             (rend "<td>\n\n")
-             (rend "```clj\n")
-             (rend rstr)
-             (rend "\n```\n")
-             (rend "\n\n</td>\n")
-             (rend "</tr>\n")
-             (render-code-res-pairs rend xs)
-             }))))
-
-(defun render-code-table (rend c)
-    {
-    (rend "<table>\n")
-    (rend "<tr>\n")
-    (rend "<td> Example </td> <td> Result </td>\n")
-    (rend "</tr>\n")
-    (render-code-res-pairs rend c)
-    (rend "</table>\n\n")
-    })
-
-(defun intersperse (str strs)
-  (match strs
-         ( ((? s) . nil) s)
-         ( ((? s) . (? ss))
-           (str-merge s str (intersperse str ss)))))
-    
-
-(defun tableize (strs)
-  (str-merge "|" (intersperse "|" strs) "|\n" )
-  )
-
-(defun render-table (rend h d)
-  {
-  (rend "\n")
-  (rend (tableize h))
-  (rend (tableize (map (lambda (x) ":----:") h)))
-  (map (lambda (s) (rend (tableize s))) d)
-  (rend "\n")
-  }
-  )
-
-(defun render-program-res-pairs (rend cs)
-  (match cs
-         (nil t)
-         ( ((? x) . (? xs))
-           (let ((cstrs (map (lambda (c) (str-merge (pretty c) "\n"))  x))
-                 (res (eval-program nil x))
-                 (rstr (to-str res)))
-             {
-             (rend "<tr>\n")
-             (rend "<td>\n\n")
-             (rend "\n```clj\n")
-             (map rend cstrs)
-             (rend "\n```\n")
-             (rend "\n\n</td>\n")
-             (rend "<td>\n\n")
-             (rend "\n```clj\n")
-             (rend rstr)
-             (rend "\n```\n")
-             (rend "\n\n</td>\n")
-             (rend "</tr>\n")
-             (render-program-res-pairs rend xs)
-             }))))
-
-(defun render-program-table (rend c)
-  {
-    (rend "<table>\n")
-    (rend "<tr>\n")
-    (rend "<td> Example </td> <td> Result </td>\n")
-    (rend "</tr>\n")
-    (render-program-res-pairs rend c)
-    (rend "</table>\n\n")
-    })
-
-(defun str-merge-list (strs)
-  (match strs
-         ( nil "" )
-         ( ((? s) . (? ss)) (str-merge s (str-merge-list ss)))))
-
-(defun render-it (rend ss)
-  (match ss
-         ( nil (rend "\n") )
-         ( (section (? i) (? x) (? xs))
-           {
-           (match i
-                  (1 (rend (str-merge "# " x "\n\n")))
-                  (2 (rend (str-merge "## " x "\n\n")))
-                  (3 (rend (str-merge "### " x "\n\n")))
-                  (4 (rend (str-merge "#### " x "\n\n"))))
-           (render rend xs)
-           }
-           )
-         ( (para (? x)) { (map (lambda (s) (rend (str-merge s " "))) x) (rend "\n\n") } )
-         ( (verb (? x)) { (map (lambda (s) (rend s)) x) (rend "\n") } )
-         ( hline (rend "\n---\n\n"))
-         ( newline (rend "\n"))
-         ( (bold (? s))
-           (rend (str-merge "**" s "**")))
-         ( (program (? c)) (render-program-table rend c))
-         ( (code (? c)) (render-code-table rend c))
-         ( (image (? alt) (? url))
-           (rend (str-merge "![" alt "](" url " \"" alt "\")\n\n")))
-         ( (image-pair (? cap0) (? txt0) (? fig0) (? cap1) (? txt1) (? fig1))
-           (rend (str-merge cap0 " | " cap1 "\n"
-                            "|:---:|:---:|\n"
-                            "![" txt0 "](" fig0 ") | ![" txt1 "](" fig1 ")\n\n")))
-         ( (s-exp-graph (? img-name) (? code))
-           {
-           (render-dot img-name code)
-           (rend (str-merge "![Graph representaion of s-expression](./images/" img-name ".png)\n\n"))
-           })
-         ( (semantic-step (? c1) (? c2) (? p)
-                          ))
-         ( (table (? h) (? d))
-           (render-table rend h d))
-         ( _ (render rend ss))
-         ))
-
-
-(defun render (rend ss)
-  (match ss
-         (nil t)
-         ( ((? x) . (? xs))
-           {
-           (render-it rend x)
-           (render rend xs)
-           })
-         ))
-
-(define end nil)
-
-(defun s+ (s ss)
-  (cons s ss))
-
-(defun section (i str strs)
-  (list 'section i str strs))
-
-(defun ref-entry (str strs)
-  (list
-   'newline
-   (section 3 str strs)
-   'newline
-   'hline
-   ))
-
-(defun hline ()
-  'hline)
-
-(defun para (str)
-  (list 'para str))
-
-(defun verb (str)
-  (list 'verb str))
-
-(defun code (c)
-  (list 'code c))
-
-(defun code-examples (c)
-  (list 'code-examples c))
-
-(defun program (c)
-  (list 'program c))
-
-(defun newline ()
-  'newline)
-
-(defun bold (str)
-  (list 'bold str))
-
-(defun bullet (ss)
-  (verb (map (lambda (x) (str-merge "   - " x "\n")) ss)))
-
-(defun image (alt url)
-  (list 'image alt url))
-
-(defun image-pair (cap0 txt0 fig0 cap1 txt1 fig1)
-  (list 'image-pair cap0 txt0 fig0 cap1 txt1 fig1))
-
-(defun s-exp-graph (img-name code)
-  (list 's-exp-graph img-name code))
-
-(defun semantic-step (c1 c2 prop)
-  (list 'semantic-step c1 c2 prop))
-
-(defun table (header data)
-  (list 'table header data))
-
-;; Dot generation
-
-(defun dot-it ( i x)
-  (match x
-         ( ((? x) . (? xs))
-           (let ( (node (str-merge "cons" (to-str i)))
-                  ((c1 str1) (dot-it (shl i 1) x))
-                  ((c2 str2) (dot-it (+ 1 (shl i 1)) xs))
-                  )
-             (list node (str-merge "   " node " [label=\"cons\"]\n"
-                                   str1 "\n"
-                                   str2 "\n"
-                                   "   " node " -> " c1 ";\n"
-                                   "   " node " -> " c2 ";\n"
-                                   )
-                   )
-             )
-           )
-         ( (? x)
-           (let ( (node (str-merge "atom" (to-str i))) )
-             (list node (str-merge "   " node " [label=\"" (to-str x)  "\"]"))
-             )
-          )
-         )
-  )
-
-(defun to-dot (x)
-  (str-merge "digraph SExpression {\n"
-             "   node [shape=ellipse, fontsize=12];\n"
-             "   edge [fontsize=10];\n"
-             (car (cdr (dot-it 1u64 x))) "\n}"))
-
-
-(defun render-dot (filename code)
-  (let ( (dot-str (to-dot code))
-         (name-dot (str-merge "./images/" filename ".dot"))
-         (name-png (str-merge "./images/" filename ".png"))
-         (fp-dot (fopen name-dot "w"))
-         (fp-png (fopen name-png "w"))
-         )
-    {
-    (fwrite fp-dot dot-str)
-    (unsafe-call-system (str-merge "dot " name-dot " -Tpng > " name-png))
-    }
-    ))
-
 (def ch-symbols
      (section 2 "About Symbols"
               ( list
@@ -638,7 +322,7 @@
 			"Any extensions to the local environment performed by an expresison in the sequence is only visible within that expression itself."
 			))
 	    (bullet (list "**let**: `(let ((s1 e1) (s2 e2) ... (sN eN) e)` eI are evaluated in order into `vI`. The local environment is extended with `(sI . vI)`. `sI` is visible in `eJ` for `J >= I`. `e` is then evaluated in the extended local environment."
-			  "**setq**: `(setq s e)' is evaluated by first evaluating `e` into `v`. The environments are then scanned for a bining of `s`. local environment is searched first followed by global. If a binding of `s` is found it is modified into `(s . v)`."
+			  "**setq**: `(setq s e)` is evaluated by first evaluating `e` into `v`. The environments are then scanned for a bining of `s`. local environment is searched first followed by global. If a binding of `s` is found it is modified into `(s . v)`."
 			  ))
 	    (para (list "If no binding of `s` is found when evaluating `(setq s e)` a `variable_not_bound` error is triggered."
 			))
@@ -652,8 +336,19 @@
             (para (list "**Function application evaluation**"
                         ))
             (para (list "The evaluation strategies explained here are applied to composite expressions"
-                        "of the `(e1 ... eN)` form."
+                        "of the `(e1 ... eN)` form where `e1` does not fall into the category of \"special forms\"."
                         ))
+            (para (list "In LispBM an `(e1 ... eN)` is evaluated by first evaluating `e1`. This is because depending on"
+                        "what kind of function object `e1` evaluates into, the application if evaluated in different ways."
+                        ))
+            (para (list "`e1` sould evaluate into a `closure`, a \"fundamental operation\" or an \"extension\"."
+                        "fundamental operations and extensions take their arguments passed on the stack while a closure"
+                        "is applied in an environment extended with the argument value bindings."
+                        ))
+            (para (list "Depending on the value of `e1` the arguments are either evaluated left to right and the results are"
+                        "pushed onto the stack, or they are evaluated left to right and used to extend the environment."
+                        ))
+            
             (para (list "**The quote and the quasiquote**"
                         ))
             (para (list "The LBM parser (Reader) expands usages of the character sequences:"
@@ -829,10 +524,12 @@
   (ref-entry "/"
              (list
               (para (list "Division. The form of a `/` expression is `(/ expr1 ... exprN)`."
+                          "The resulting type is the same as the inputs (after their types have been promoted of course)."
                           ))
               (code '((/ 128 2)
                       (read-eval "(/ 6.28 2)")
-                      (/ 256 2 2 2 2 2 2 2)))
+                      (/ 256 2 2 2 2 2 2 2)
+                      (/ 5 2)))
               end)))
 
 (define arith-mod
@@ -845,6 +542,24 @@
                       (mod 1024 100)
                       (mod -7 5)))
               end)))
+              
+(define arith-int-div
+  (ref-entry "//"
+             (list
+              (para (list "Integer division operation. Like normal division except if the result is a floating point value"
+                          "it is cast to an integer, which floors the result. The form of a `//` expression is"
+                          "`(// expr1 ... exprN)`."
+                          "Can be used as a elegant complement to `mod`, with `//` returning the quotient and `mod`"
+                          "returning the remainder of a division."
+                          ))
+              (code '((// 5.0 2)
+                      {
+                        (var total-seconds 62.5)
+                        (var minutes (// total-seconds 60))
+                        (var seconds (mod total-seconds 60))
+                        (str-join (list (str-from-n minutes) "m " (str-from-n seconds) "s") "")
+                      })
+              end))))
 
 (define arithmetic
   (section 2 "Arithmetic"
@@ -854,7 +569,7 @@
                  arith-mul
                  arith-div
                  arith-mod
-                 )
+                 arith-int-div)
            ))
 
 ;; Comaprisons section
@@ -1042,6 +757,45 @@
                  bool-and
                  bool-or
                  bool-not
+                 )
+           ))
+
+;; Predicates
+
+(define is-a-list
+  (ref-entry "list?"
+             (list
+              (para (list "the `list?` predicate is true for all lists, empty (nil) or not."
+                          ))
+              (code '((list? nil)
+                      (list? '())
+                      (list? (list 1 2 3))
+                      (list? '(1 2 3))
+                      (list? 2)
+                      (list? 'kurt-russel)
+                      ))
+              end)))
+
+(define is-a-number
+  (ref-entry "number?"
+             (list
+              (para (list "the `number?` predicate is true for all numbers."
+                          ))
+              (code '((number? nil)
+                      (number? 1)
+                      (number? 2u)
+                      (number? 3.14f32)
+                      (number? 'michael-shanks)
+                      (number? 'james-spader)
+                      ))
+              end)))
+
+
+(define predicates
+  (section 2 "Predicates"
+           (list 'hline
+                 is-a-list
+                 is-a-number
                  )
            ))
 
@@ -1262,6 +1016,23 @@
 
 ;; Built-in operations
 
+(define built-in-identity
+  (ref-entry "identity"
+             (list
+              (para (list "The identity function takes one argument which it directly returns."
+                          "The form of an `identity` expression is `(identity expr)`, where expr is an arbitrary lisp expression."
+                          "`(identity expr)` is a function application so all normal function application rules apply."
+                          "The most important property of function applications in this case is that the argument is evaluated which"
+                          "differentiates `identity` from `quote` which returns the argument unevaluated."
+                          ))
+              (code '((identity 1)
+                      (identity (+ 1 2))
+                      (identity 'apa)
+                      (identity 'kurt-russel)
+                      (identity '(+ 1 2))
+                      ))
+              end)))
+
 (define built-in-eval
   (ref-entry "eval"
              (list
@@ -1435,6 +1206,7 @@
 (define built-ins
   (section 2 "Built-in operations"
            (list 'hline
+                 built-in-identity
                  built-in-rest-args
                  built-in-eval
                  built-in-eval-program
@@ -1730,7 +1502,8 @@
                           "`(read string)`."
                           ))
               (code '((read-eval "(read \"1\")")
-                      (read-eval "(read \"(lambda (x) (+ x 1))\"")
+                      (read-eval "(read \"(+ 1 2)\")")
+                      (read-eval "(read \"(lambda (x) (+ x 1))\")")
                       ))
               end)))
 
@@ -2027,7 +1800,7 @@
   (ref-entry "rotate"
              (list
               (para (list "`rotate` creates a list containing the same elements as an existing list but rotated some number of step along a direction."
-                          "The form of a `reverse` expression is `(rotate list-exp dist-expr)`."
+                          "The form of a `rotate` expression is `(rotate list-exp dist-expr)`."
                           "The sign of the value dist-expr evaluates to, decides direction of rotation."
                           ))
               (code '((define apa (list 1 2 3 4 5 6 7 8 9 10))
@@ -2093,7 +1866,7 @@
                         "and the cdr fields hold pointers (the last cdr field is nil). The list below"
                         "can be created either as `'(1 2 3)` or as `(list 1 2 3)`."
                         ))
-            (image "list" "images/list.png")
+            (s-exp-graph "list_1_2_3" (list 1 2 3))
             lists-car
             lists-first
             lists-cdr
@@ -2188,18 +1961,26 @@
             assoc-setassoc
             )))
 
-;; Arrays Byte buffers
+;; Byte buffers
 
-(define arrays-bufcreate
+(define bb-bufcreate
   (ref-entry "bufcreate"
              (list
-              (para (list "Create an array of bytes. The form of a `bufcreate` expression is `(bufcreate size-expr)`"
+              (para (list "Create an array of bytes. The form of a `bufcreate` expression is `(bufcreate size-expr)`."
                           ))
               (code '((define data (bufcreate 10))
+		      (define empty-array (bufcreate 0))
                       ))
+              (para (list "Alternatively a buffer can be allocated from a compactible memory region (defrag mem)."
+                          ))
+              (code '((define dm (dm-create 1000))
+                      (define data-in-dm (bufcreate dm 10))
+                      ))
+              (para (list "For more information about defragmentable memory see <a href=#Defragmentable_memory>Defragmentable memory</a>."
+                          ))
               end)))
 
-(define arrays-buflen
+(define bb-buflen
   (ref-entry "buflen"
              (list
               (para (list "Returns the size of a buffer in number of bytes. The form"
@@ -2210,7 +1991,7 @@
                       ))
               end)))
 
-(define arrays-bufget
+(define bb-bufget
   (ref-entry "bufget-[X]"
              (list
               (para (list "Read a value from a buffer. The contents of a buffer can be read"
@@ -2230,7 +2011,7 @@
                       ))
               end)))
 
-(define arrays-bufset
+(define bb-bufset
   (ref-entry "bufset-[X]"
              (list
               (para (list "The `bufset` functions performs a destructive updates to a buffer."
@@ -2254,7 +2035,7 @@
                       ))
               end)))
 
-(define arrays-bufclear
+(define bb-bufclear
   (ref-entry "bufclear"
              (list
               (para (list "To clear a byte array the function bufclear can be used `(bufclear arr optByte optStart optLen)`"
@@ -2278,10 +2059,10 @@
                       ))
               end)))
 
-(define arrays-literal
-  (ref-entry "Byte-array literal syntax"
+(define bb-literal
+  (ref-entry "Byte buffer literal syntax"
              (list
-              (para (list "Byte-array (buffer) literals can be created using the `[` and `]` syntax to enclose"
+              (para (list "Byte buffer literals can be created using the `[` and `]` syntax to enclose"
                           "values to initialize the array with. The `[` and `]` syntax is complete"
                           "resolved in the parser and thus cannot contain arbitrary lisp terms."
                           "the values listed between the `[` and the `]` must be literals!"
@@ -2292,16 +2073,184 @@
                       ))
               end)))
 
-(define arrays
-  (section 2 "Arrays (byte buffers)"
+(define bytebuffers
+  (section 2 "Byte buffers"
            (list 'hline
-                 arrays-bufcreate
-                 arrays-buflen
-                 arrays-bufget
-                 arrays-bufset
-                 arrays-bufclear
-                 arrays-literal
+                 bb-bufcreate
+                 bb-buflen
+                 bb-bufget
+                 bb-bufset
+                 bb-bufclear
+                 bb-literal
                  )))
+
+(define array-literals
+  (ref-entry "array literals"
+             (list
+              (para (list "An array literal are specified as a sequence of lisp values between `[|` and `|]`."
+                          "Values in a literal array are not evaluated."
+                          ))
+              (code '((define my-arr [| 1 2 3 |])
+                      (define my-arr [| daniel jackson |])
+                      (define my-arr [| (apa . bepa) (1 . 2) |])
+                      (define my-arr [| (+ 1 2) (+ 3 4) |])
+                      (define my-arr [| [| 1 2 3|] [|4 5 6|]|])
+                      (ix my-arr 0)
+                      (ix my-arr 1)
+                      (ix (ix my-arr 0) 1)
+                      (ix (ix my-arr 1) 2)
+                      ))
+              (para (list "All arrays have an associated heap-cell that acts as a liaison in relation"
+                          "to the garbage collector."
+                          "When garbage collection frees the liaison, it also frees the array data in"
+                          "buffers and arrays memory (lbm_memory)."
+                          ))
+              (s-exp-graph "array_literal" [| 1 2 3 |] "In memory representation of an array")
+              end
+              )
+             )
+  )
+
+(define array-array
+  (ref-entry "array"
+             (list
+              (para (list "`array` takes n arguments and creates an array holding those arguments as values."
+                          "The form of an `array` expression is `(array expr1 ... exprN)`."
+                          ))
+              (code '((define my-arr (array 1 2 3))
+                      (define my-arr (array (+ 1 2) (+ 3 4)))
+                      ))
+              end
+              )
+             )
+  )
+
+(define array-mkarray
+  (ref-entry "mkarray"
+   (list
+    (para (list "Allocate an array with `mkarray`. Arrays are allocated in arrays and byte buffer memory."
+                "The form an `mkarray` expression is `(mkarray num-expr)`."
+                ;;"but can also be allocated in a compactible (defrag mem) area."
+                ;;"The form of an `mkarray` expression is either `(mkarray num)` or `(mkarray dm num)` where"
+                ;;"`dm` is a defrag-mem area and num is the size of the array to allocate."
+                ))
+    (para (list "Note that there is currently no literal syntax for arrays."
+                ))
+    (para (list "The example below allocates an array in \"lbm_memory\" (arrays and byte-buffer memory)."
+                ))
+    (code '((define my-arr (mkarray 10))
+            ))
+    ;;(para (list "Below is an example allocating an array from a compactible memory area."
+    ;;            ))
+    ;;(code '((define my-dm (dm-create 1000))
+    ;;        (define my-arr (mkarray my-dm 10))
+    ;;        ))
+    end
+    )
+   )
+  )
+
+(define array-ix
+  (ref-entry "ix"
+             (list
+              (para (list "Index into an array using the `ix` function. The form of an `ix` expression"
+                          "is `(ix array-expr index-expr)`. Indexing starts from 0 and if you index out of bounds the result is nil."
+                          "A negative index accesses values starting from the end of the array."
+                          ))
+              (code '((ix [| 1 2 3 4 |] 1)
+                      (ix [| 1 2 3 4 |] -1)
+                      ))
+              end
+              )
+             )
+  )
+
+(define array-setix
+  (ref-entry "setix"
+             (list
+               (para (list "Destructively update an element in an array. The form of a `setix` expression"
+                          "is `(setix arr-expr index-extr value-expr)`. Indexing starts from 0 and"
+                          "if you index out of bounds the result is nil."
+                          "A negative value -n will update the nth value from the end of the list."
+                          ))
+              (code '((setix [| 1 2 3 4 5 |] 2 77)
+                      (setix [| 1 2 3 4 5 |] -2 66)
+                      ))
+              end
+              )
+             )
+  )
+
+;; High level arrays
+(define arrays
+  (section 2 "Arrays"
+           (list
+            (para (list "LispBM supports arrays of arbitrary lisp values (including other arrays)."
+                        ))
+            array-literals
+            array-array
+            array-mkarray
+            array-ix
+            array-setix
+            )
+           )
+  )
+
+;; Defragmentable memory
+
+(define defrag-introduction
+    (list 
+     (para (list "LBM has two types of memory, the HEAP and the LBM_MEMORY. Lists and pairs are all stored on the heap."
+		 "Arrays and large values (such as 64bit numbers are stored on LBM_MEMORY."
+		 "The HEAP has a nice property that all allocations on it are the same size and therefore the HEAP is imune"
+		 "the problems caused by fragmentation."
+		 "On LBM_MEMORY arbitrarily sized arrays can be allocated and fragmentation can cause an allocation to fail even"
+		 "though there is enough free bytes."
+		 ))
+     (para (list "One way to resolve the fragmentation problem is to use a compacting garbage collector."
+		 "We have opted to not use a compacting garbage collector on the LBM_MEMORY as it is quite complicated."
+		 "It is extra complicated given how this memory is a shared resource between C extensions and the lisp runtime system."
+		 ))
+     (para (list "Our solution is to allow the programmer to create a memory block inside of the LBM_MEMORY in which we will run a defragmentation"
+		 "routine when needed. The defragmentable memory can only be used to allocate non-zero sized byte arrays on the lisp side."
+		 "The idea is that the programmer calculates the maximum size of simultaneously used arrays (+ the overhead of 3 words per allocation)"
+		 "needed for a small critical set of arrays used in the program and allocates a defragmentable memory of that size."
+		 ))
+     (para (list "The LBM (non-compacting) gabage collector frees arrays from a defragmentable memory area automatically."
+		 "An allocation in the defragmentable memory area that fails triggers garbage collection followed by compaction (if needed)."
+		 ))
+     )
+  )
+
+(define defrag-dm-create
+    (ref-entry "dm-create"
+	       (list
+		(para (list "`dm-create` creates a region of defragmentable memory for bytearrays within LBM memory."
+			    "The form of a `dm-create` expression is `(dm-create size-expr)`." 
+			    ))
+		(code '((define dm (dm-create 1000))))
+		)))
+
+(define defrag-dm-alloc
+    (ref-entry "dm-alloc"
+	       (list
+		(para (list "`dm-alloc` is used to allocate a byte-array from a region of defragmentable memory."
+			    "The form of a `dm-alloc` expression is `(dm-alloc DM-expr size-expr)`."
+			    "where `DM-expr` evaluates to the defragmentable region to allocate from and `size-expr` is the number of bytes to allocate."
+			    "Each allocation uses up 12 extre bytes of header that you do not include in `size-expr`."
+		      ))
+		(code '((define arr10 (dm-alloc dm 10))
+			(define arr100 (dm-alloc dm 100))))
+	       )))
+
+(define defrag-mem
+    (section 2 "Defragmentable memory"
+	     (list defrag-introduction
+		   'hline
+		   defrag-dm-create
+		   defrag-dm-alloc
+		   )))
+
 
 ;; Pattern matching
 
@@ -2499,6 +2448,32 @@
                           ))
               end)))
 
+(define conc-kill
+  (ref-entry "kill"
+             (list
+              (para (list "The `kill` function allows you to force terminate"
+                          "another thread. It has the signature `(kill thread-id-expr val-expr)`,"
+                          "where `thread-id-expr` is the thread that you want to terminate,"
+                          "and `val-expr` is the final result the thread dies with."
+                          ))
+              (program '(((defun f () (f))
+                          (define id (spawn f))
+                          (kill id nil)
+                          )
+                         ))
+              (para (list "The `val-expr` can be observed if the thread exit status is captured using `spawn-trap`"
+                          ))
+              (program '(((defun f () (f))
+                          (define id (spawn-trap f))
+                          (kill id 'kurt-russel)
+                          (recv (( ? x) x))
+                          )
+                         ))
+              (para (list "The `val-expr` could be used to communicate to a thread monitor that the"
+                          "thread it monitors has been intentionally but externally killed."
+                          ))
+              
+              end)))
 
 
 
@@ -2533,6 +2508,7 @@
             conc-atomic
             conc-exit-ok
             conc-exit-error
+            conc-kill
             )
            ))
 
@@ -2564,18 +2540,21 @@
              (list
               (para (list "Like [recv](#recv), `recv-to` is used to receive"
                           "messages but `recv-to` takes an extra timeout argument."
+                          "It then receives a message containing the symbol"
+                          "`timeout` after the timeout period ends."
                           ))
               (para (list "The form of an `recv-to` expression is"
-                          "```clj"
-                          "(recv-to timeout-secs"
-                          "                (pattern1 exp1)"
-                          "                ..."
-                          "                (patternN expN))"
-                          "```"
+                          "`(recv-to timeout-secs (pattern1 exp1) ... (patternN expN))`"
                           ))
               (program '(((send (self) 28)
                           (recv-to 0.1
-                                   ((? n) (+ n 1))
+                                   (timeout 'no-message)
+                                   ((? n) (+ n 1)))
+                          )
+                         ))
+              (program '(((send (self) 'not-foo)
+                          (recv-to 0.1
+                                   (foo 'got-foo)
                                    (timeout 'no-message))
 
                           )
@@ -2754,22 +2733,22 @@
                         "which will allow some pretty arbitrary control flow."
                         ))
             (para (list "The example below creates a macro for a `progn` facility that"
-                        "allows returning at an arbitrary point.\n"
+                        "allows returning at an arbitrary point.\n\n"
                         "```clj\n"
                         "(define do (macro (body)\n"
                         "                  `(call-cc (lambda (return) (progn ,@body)))))\n"
-                        "```\n"
+                        "```\n\n"
                         "The example using `do` below makes use of `print` which is not a"
                         "built-in feature of lispBM. There are just to many different ways a programmer may"
                         "want to implement `print` on an microcontroller. Use the lispBM extensions"
-                        "framework to implement your own version of `print`\n"
+                        "framework to implement your own version of `print`\n\n"
                         "```clj\n"
                         "(do ((print 10)\n"
                         "     (return 't)\n"
                         "     (print 20)))\n"
-                        "```\n"
+                        "```\n\n"
                         "In the example above only \"10\" will be printed."
-                        "Below is an example that conditionally returns.\n"
+                        "Below is an example that conditionally returns.\n\n"
                         "```clj\n"
                         "(define f (lambda (x)\n"
                         "            (do ((print \"hello world\")\n"
@@ -2777,10 +2756,30 @@
                         "                     (return 't)\n"
                         "                     nil)\n"
                         "                 (print \"Gizmo!\")))))\n"
-                        "```\n"
+                        "```\n\n"
                         ))
-            )
+                  
+            (ref-entry "call-cc"
+                       (list
+                        (para (list "The form of a `call-cc` expression is `(call-cc f)`, where f is a function taking a continuation k."
+                                    "In code most uses of call-cc will have the form `(call-cc (lambda (k) expr ))`."
+                                    "When using `call-cc` the expr above is allowed to bind `k` to a global variable."
+                                    ))
+                        )
+                       )           
+           (ref-entry "call-cc-unsafe"
+                      (list
+                       (para (list "`call-cc-unsafe` is similar to `call-cc` in form. `(call-cc-unsafe f)`"
+                                   "and in code usually as `(call-cc-unsafe (lambda (k) expr))`."
+                                   "When using call-cc-unsafe you must NOT let the `k` leak out of the scope created"
+                                   "by the enclosing `call-cc-unsafe`! That is, if `k` is used at all, it must be within `expr`."
+                                   "Binding `k` (directly or indirectly) to a global is a violation of the trust I am putting in you."
+                                   ))
+                       )
+                      )
            ))
+  )
+
 
 ;; Error handling
 
@@ -2888,13 +2887,16 @@
 
 ;; Flash memory
 
-(define const-symbol-strings
-  (ref-entry "@const-symbol-strings"
-             (list
-              (para (list "if `@const-symbol-strings` directive is placed in a file, symbols will be created"
-                          "in flash memory instead of the arrays memory."
-                          ))
-              end)))
+;; (define const-symbol-strings
+;;   (ref-entry "@const-symbol-strings"
+;;              (list
+;;               (para (list "`@const-symbol-strings` functionality have been combined with `@const-start` and `@const-end`."
+;;                           "Now symbols created while in a const block, end up in flash storage."
+;;                           ))
+;;               (para (list "~~if `@const-symbol-strings` directive is placed in a file, symbols will be created"
+;;                           "in flash memory instead of the arrays memory.~~"
+;;                           ))
+;;               end)))
 
 (define const-start
   (ref-entry "@const-start"
@@ -2960,7 +2962,7 @@
                         "reading, there are `@`directives."
                         ))
             'hline
-            const-symbol-strings
+            ;const-symbol-strings
             const-start
             const-end
             flash-move
@@ -3066,12 +3068,6 @@
 
 ;; Manual
 
-(define info
-  (let (((major minor patch) (lbm-version))
-        (version-str (str-merge (to-str major) "." (to-str minor) "." (to-str patch))))
-        (para (list (str-merge "This document was generated by LispBM version " version-str))
-        )))
-
 (define manual
   (list
    (section 1 "LispBM Reference Manual"
@@ -3083,6 +3079,7 @@
                            (list arithmetic
                                  comparisons
                                  boolean
+                                 predicates
                                  bitwise
                                  nil-and-t
                                  quotes
@@ -3090,7 +3087,9 @@
                                  special-forms
                                  lists
                                  assoc-lists
+                                 bytebuffers
                                  arrays
+				 defrag-mem
                                  pattern-matching
                                  concurrency
                                  message-passing

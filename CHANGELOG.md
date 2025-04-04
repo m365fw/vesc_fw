@@ -1,5 +1,20 @@
-### 6.05
+### 6.06
 #### TBD
+* LispBM:
+	* New core extansions, optimization and much more unit testing.
+	* Many bug fixes in the reader.
+	* Moved const memory into its own flash sector.
+	* Added const-heap-erase extension.
+	* Added mutex support.
+	* Added can-ping extension.
+* New offset calibration modes and options.
+* Automatic offset calibration support.
+* Added HFI ambiguity resolution modes using id injection.
+* Support for coordinated CAN baudrate update.
+* Overmodulation support.
+
+### 6.05
+#### 2024-08-19
 * LispBM:
 	* Support for var in progn.
 	* Support for curly brackets instead of progn.
@@ -56,6 +71,7 @@
 * Configurable HFI error truncation to reject noise.
 * Removed GPDrive.
 * FOC: Option to short phases on 0 duty.
+* FOC: Added MXV observer.
 
 ### 6.02
 #### 2023-03-12

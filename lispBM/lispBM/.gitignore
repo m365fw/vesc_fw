@@ -1,3 +1,6 @@
+*.gcda
+*.gcno
+
 # Prerequisites
 *.d
 
@@ -50,6 +53,17 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Nix result
+/result
+
+# C Documentation results
+/doc/c_doc/html
+/doc/c_doc/latex
+
+# Documentation files
+/doc/doclib.env
+/doc/images/*.dot
 
 #extra
 *~

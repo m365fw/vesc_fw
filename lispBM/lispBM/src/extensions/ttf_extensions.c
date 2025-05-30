@@ -21,18 +21,24 @@
 
 #include "schrift.h"
 
+#ifdef LBM_OPT_TTF_EXTENSIONS_SIZE
+#pragma GCC optimize ("-Os")
+#endif
+#ifdef LBM_OPT_TTF_EXTENSIONS_SIZE_AGGRESSIVE
+#pragma GCC optimize ("-Oz")
+#endif
 
 static bool mk_font_raw(SFT_Font *ft, lbm_value font_val) {
   lbm_array_header_t *arr = (lbm_array_header_t*)lbm_car(font_val);
-  ft->memory = (uint8_t*)arr->data;
-  ft->size = (uint_fast32_t)arr->size;
-  ft->unitsPerEm = 0;
-  ft->locaFormat = 0;
-  ft->numLongHmtx = 0;
-  if (init_font(ft) < 0) {
-    return false;
+  if (arr) {
+    ft->memory = (uint8_t*)arr->data;
+    ft->size = (uint_fast32_t)arr->size;
+    ft->unitsPerEm = 0;
+    ft->locaFormat = 0;
+    ft->numLongHmtx = 0;
+    return (init_font(ft) >= 0) ? true : false;
   }
-  return true;
+  return false;
 }
 
 static SFT mk_sft(SFT_Font *ft, float x_scale, float y_scale) {
@@ -351,7 +357,7 @@ lbm_value ext_ttf_prepare_bin(lbm_value *args, lbm_uint argn) {
       if (kern_tab_bytes <=  0) {
         lbm_free(unique_utf32);
         return ENC_SYM_EERROR;
-      } 
+      }
 
       int glyph_gfx_size = glyphs_img_data_size(&sft, fmt, unique_utf32, n);
       if (glyph_gfx_size <= 0) {
@@ -680,18 +686,18 @@ lbm_value ttf_text_bin(lbm_value *args, lbm_uint argn) {
 
       uint32_t num_colors = 1 << src.fmt;
       for (int j = 0; j < src.height; j++) {
-        for (int i = 0; i < src.width; i ++) {
+        for (int k = 0; k < src.width; k ++) {
           // the bearing should not be accumulated into the advances
 
-          uint32_t p = getpixel(&src, i, j);
+          uint32_t p = getpixel(&src, k, j);
           if (p) { // only draw colored
             uint32_t c = colors[p & (num_colors-1)]; // ceiled
             if (up) {
-              putpixel(&tgt, x_pos + (j + (int)y_n), y_pos - (i + (int)(x_n + left_side_bearing)), c);
+              putpixel(&tgt, x_pos + (j + (int)y_n), y_pos - (k + (int)(x_n + left_side_bearing)), c);
             } else if (down) {
-              putpixel(&tgt, x_pos - (j + (int)y_n), y_pos + (i + (int)(x_n + left_side_bearing)), c);
+              putpixel(&tgt, x_pos - (j + (int)y_n), y_pos + (k + (int)(x_n + left_side_bearing)), c);
             } else {
-              putpixel(&tgt, x_pos + (i + (int)(x_n + left_side_bearing)), y_pos + (j + (int)y_n), c);
+              putpixel(&tgt, x_pos + (k + (int)(x_n + left_side_bearing)), y_pos + (j + (int)y_n), c);
             }
           }
         }
@@ -789,7 +795,6 @@ lbm_value ext_ttf_wh(lbm_value *args, lbm_uint argn) {
     }
 
     float x_n = x;
-    float y_n = y;
 
     float advance_width;
     float left_side_bearing;
@@ -821,8 +826,6 @@ lbm_value ext_ttf_wh(lbm_value *args, lbm_uint argn) {
                          kern_index);
       }
       x_n += x_shift;
-      y_n += y_shift;
-      y_n += y_offset;
     } else {
       return ENC_SYM_EERROR;
     }
@@ -849,6 +852,7 @@ lbm_value ext_ttf_glyph_dims(lbm_value *args, lbm_uint argn) {
       lbm_is_array_r(args[1])) { // string utf8,
 
     lbm_array_header_t *font_arr = lbm_dec_array_r(args[0]);
+    if (!font_arr) return ENC_SYM_FATAL_ERROR;
     if (font_arr->size < 10) return ENC_SYM_EERROR;
 
     int32_t index = 0;
@@ -867,6 +871,7 @@ lbm_value ext_ttf_glyph_dims(lbm_value *args, lbm_uint argn) {
     }
 
     lbm_array_header_t *utf8_array_header = (lbm_array_header_t*)(lbm_car(args[1]));
+    if (!utf8_array_header) return ENC_SYM_FATAL_ERROR;
 
     uint32_t next_i = 0;
     uint32_t utf32 = 0;
@@ -905,6 +910,7 @@ lbm_value ext_ttf_line_height(lbm_value *args, lbm_uint argn) {
       lbm_is_array_r(args[0])) {
 
     lbm_array_header_t *font_arr = lbm_dec_array_r(args[0]);
+    if (!font_arr) return ENC_SYM_FATAL_ERROR;
     if (font_arr->size < 10) return ENC_SYM_EERROR;
 
     int32_t index = 0;
@@ -933,6 +939,7 @@ lbm_value ext_ttf_ascender(lbm_value *args, lbm_uint argn) {
       lbm_is_array_r(args[0])) {
 
     lbm_array_header_t *font_arr = lbm_dec_array_r(args[0]);
+    if (!font_arr) return ENC_SYM_FATAL_ERROR;
     if (font_arr->size < 10) return ENC_SYM_EERROR;
 
     int32_t index = 0;
@@ -961,6 +968,7 @@ lbm_value ext_ttf_descender(lbm_value *args, lbm_uint argn) {
       lbm_is_array_r(args[0])) {
 
     lbm_array_header_t *font_arr = lbm_dec_array_r(args[0]);
+    if (!font_arr) return ENC_SYM_FATAL_ERROR;
     if (font_arr->size < 10) return ENC_SYM_EERROR;
 
     int32_t index = 0;
@@ -989,6 +997,7 @@ lbm_value ext_ttf_line_gap(lbm_value *args, lbm_uint argn) {
       lbm_is_array_r(args[0])) {
 
     lbm_array_header_t *font_arr = lbm_dec_array_r(args[0]);
+    if (!font_arr) return ENC_SYM_FATAL_ERROR;
     if (font_arr->size < 10) return ENC_SYM_EERROR;
 
     int32_t index = 0;

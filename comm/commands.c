@@ -17,7 +17,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma GCC push_options
 #pragma GCC optimize ("Os")
 
 #include "commands.h"
@@ -1407,7 +1406,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 
 #ifdef USE_LISPBM
 		if (packet_id == COMM_LISP_ERASE_CODE) {
-			lispif_restart(false, false, false);
+			lispif_stop();
 			flash_helper_erase_code(CODE_IND_LISP_CONST);
 		}
 #endif
@@ -1643,6 +1642,12 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		buffer_append_str_max_len(send_buffer, user_commit_hash, 46, &ind);
 
 		reply_func(send_buffer, ind);
+	} break;
+
+	case COMM_MOTOR_ESTOP: {
+		int32_t ind = 0;
+		mc_interface_ignore_input_both(buffer_get_uint16(data, &ind));
+		mc_interface_release_motor_override_both();
 	} break;
 
 	// Blocking commands. Only one of them runs at any given time, in their
@@ -1961,7 +1966,7 @@ void commands_apply_mcconf_hw_limits(mc_configuration *mcconf) {
 #endif
 }
 
-void commands_init_plot(char *namex, char *namey) {
+void commands_init_plot(const char *namex, const char *namey) {
 	int ind = 0;
 	uint8_t *send_buffer_global = mempools_get_packet_buffer();
 	send_buffer_global[ind++] = COMM_PLOT_INIT;
@@ -1975,7 +1980,7 @@ void commands_init_plot(char *namex, char *namey) {
 	mempools_free_packet_buffer(send_buffer_global);
 }
 
-void commands_plot_add_graph(char *name) {
+void commands_plot_add_graph(const char *name) {
 	int ind = 0;
 	uint8_t *send_buffer_global = mempools_get_packet_buffer();
 	send_buffer_global[ind++] = COMM_PLOT_ADD_GRAPH;
@@ -2497,5 +2502,3 @@ static THD_FUNCTION(blocking_thread, arg) {
 		}
 	}
 }
-
-#pragma GCC pop_options

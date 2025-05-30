@@ -458,6 +458,12 @@ This is the ADC-channel that the motor temperature sensor goes to. Note: if you 
 **Channel 4+:**  
 Some hardware has additional ADC-channels which also can be read with this function. If they are missing the voltage on ADC1 is returned instead.
 
+**Channel 20 (FW6.06+):**  
+Sin/Cos encoder SIN channel
+
+**Channel 21 (FW6.06+):**  
+Sin/Cos encoder COS channel
+
 ---
 
 #### override-temp-motor
@@ -2533,7 +2539,7 @@ Enable or disable decoding of the VESC Protocol on the CAN-bus. By default it is
 
 ---
 
-CAN messages are byte arrays of up to 500 bytes that can be sent between devices over CAN-bus. Together with flat values they are useful for e.g. remote code execution. Each CAN-device has 5 different slots to send messages to.
+CAN messages are byte arrays of up to 500 bytes that can be sent between devices over CAN-bus. Together with flat values they are useful for e.g. remote code execution. Each CAN-device has 8 different slots to send messages to.
 
 ---
 
@@ -3665,6 +3671,23 @@ The following selection of app and motor parameters can be read and set from Lis
                         ;    7: FOC_SENSOR_MODE_HFI_V4
                         ;    8: FOC_SENSOR_MODE_HFI_V5
 'm-ntc-motor-beta       ; Beta Value for Motor Thermistor
+'m_encoder_counts       ; ABI encoder counts (FW 6.06)
+'m_sensor_port_mode     ; Sensor port mode (FW 6.06)
+                        ;    0: SENSOR_PORT_MODE_HALL
+                        ;    1: SENSOR_PORT_MODE_ABI
+                        ;    2: SENSOR_PORT_MODE_AS5047_SPI
+                        ;    3: SENSOR_PORT_MODE_AD2S1205
+                        ;    4: SENSOR_PORT_MODE_SINCOS
+                        ;    5: SENSOR_PORT_MODE_TS5700N8501
+                        ;    6: SENSOR_PORT_MODE_TS5700N8501_MULTITURN
+                        ;    7: SENSOR_PORT_MODE_MT6816_SPI_HW
+                        ;    8: SENSOR_PORT_MODE_AS5x47U_SPI
+                        ;    9: SENSOR_PORT_MODE_BISSC
+                        ;    10: SENSOR_PORT_MODE_TLE5012_SSC_SW
+                        ;    11: SENSOR_PORT_MODE_TLE5012_SSC_HW
+                        ;    12: SENSOR_PORT_MODE_CUSTOM_ENCODER
+                        ;    13: SENSOR_PORT_MODE_PWM
+                        ;    14: SENSOR_PORT_MODE_PWM_ABI
 'si-motor-poles         ; Number of motor poles, must be multiple of 2
 'si-gear-ratio          ; Gear ratio (Added in FW 6.05)
 'si-wheel-diameter      ; Wheel diameter in meters (Added in FW 6.05)
@@ -4043,6 +4066,30 @@ Manually set the offsets on the selected motor. Arguments that are set to nil wi
 ; Set the i2-offset to 1.1 ADC counts and the v2-offset to 2.3 V. Leave the rest unchanged.
 (conf-dc-cal-set nil nil 1.1 nil nil 2.3)
 ```
+
+---
+
+#### conf-enc-sincos
+
+| Platforms | Firmware |
+|---|---|
+| ESC | 6.06+ |
+
+```clj
+(conf-enc-sincos optSinAmp optCosAmp optSinOfs optCosOfs optFilter optPhaseCorr)
+```
+
+Configure Sin/Cos encoder. Arguments that are set to nil will leave the corresponding parameter unchanged. If not all arguments are given the ones left out will not be updated. The resulting configuration is returned. If no arguments are given the resulting configuration is returned. Example:
+
+```clj
+(conf-enc-sincos 1.0 1.0 1.65 1.65 0.5 0.0)
+;> (1.0 1.0 1.65 1.65 0.5 0.0)
+
+(conf-enc-sincos)
+;> (1.0 1.0 1.65 1.65 0.5 0.0)
+```
+
+The update will be applied until reboot. To store it permanently conf-store can be used.
 
 ---
 
@@ -5638,6 +5685,48 @@ Lowering this value is useful if there are one or more timing-critical threads (
 ```
 
 Change the stack size for the garbage collector. If the GC stack is too small the program can crash during garbage collection and print a message stating that it ran out of GC stack. If that happens increasing the size from the default of 160 can help. Note that the GC stack is on LBM memory and increasing its size leaves less memory available for other things.
+
+---
+
+#### image-save
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.06+ |
+
+```clj
+(image-save)
+```
+
+Save everything in the global environment in an image. Returns true on success and nil on failure. This function can fail if defrag memory pools are present in the global environment as these cannot be flattened. Instead, they should be created in the main-function of the program. This function will also fail if a main-function is missing.
+
+After calling image-save, the next time lbm is started (such as at the next boot) the environment at the point where image-save was called will be re-created and the main-function will be called. This bypasses the reader on the next boot, which speeds up the boot-time greatly (on large programs from several seconds to a few milliseconds). It also makes it much easier to use const-blocks as one does not have to take care for the reader to always create everything in the same order.
+
+One has to take care to move everything that alters the external state of the hardware, such as initializing drivers and io-pins, into the main-function as this state won't be restored when loading the image. This might sound strange in this context, but keep in mind that it is what you always do when writing regular C-programs on embedded hardware - when you enter main you initialize everything and start your threads and main loop.
+
+When building something battery-powered like a BMS that wakes up from sleep regularly to check things image-save is very useful as it is critical to boot fast to conserve power. A fast boot also improves the user experience in general.
+
+Example:
+
+```clj
+(defun test (a) {
+        (print (list "Arg:" a))
+})
+
+(defun main () {
+        (loopwhile t {
+                (test 123)
+                (sleep 1)
+        })
+})
+
+(image-save)
+
+; This is only needed in order to start the program before rebooting. Without
+; calling main here one has to reboot or restart lbm after stream or upload in
+; order to call main.
+(main)
+```
 
 ---
 
@@ -7424,9 +7513,39 @@ Check if any client (e.g. VESC Tool) is connected over usb. Returns true when co
 
 ---
 
-## Non-Volatile Storage (NVS) on QML Partition
+## Non-Volatile Storage (NVS) 
 
-The QML-partition on the ESP32 can be used to store non-volatile data as key-values. Note that QML-data cannot be stored as usual when using the QML-partition as NVS.
+The `nvs` and `qml` partition on the ESP32 can be used to store non-volatile data as key-values using [Espressifs NVS library](
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html).
+
+A key is a string of maximum of 15 characters. 
+
+Functions operating on QML partition are named `nvs-qml-*`
+
+Note that QML-data cannot be stored as usual when using the QML-partition as NVS.
+
+Functions using nvs partition are named `nvs-*`. 
+
+On the nvs partition, storage is shared wth `eeprom-*`.
+
+---
+
+
+#### nvs-erase
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.06+ |
+
+```clj
+(nvs-erase)
+```
+Erase all nvs keys on nvs partition. 
+
+```clj
+(nvs-erase "key")
+```
+Erase a specific key on nvs partition.
 
 ---
 
@@ -7440,7 +7559,13 @@ The QML-partition on the ESP32 can be used to store non-volatile data as key-val
 (nvs-qml-erase)
 ```
 
-Erase all data on QML-partition.
+Erase all nvs keys on qml partition.
+
+```clj
+(nvs-qml-erase "key")
+```
+
+Erase a specific key on qml partition.
 
 ---
 
@@ -7458,6 +7583,23 @@ Initialize the QML-partition with the NVS-module. This has to be done before fur
 
 ---
 
+#### nvs-read
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.06+ |
+
+```clj
+(nvs-read key)
+```
+
+Read key from nvs-partition, return the content as a byte array.
+
+Returns `nil` if a key has not been written to previously.
+
+---
+
+
 #### nvs-qml-read
 
 | Platforms | Firmware |
@@ -7468,7 +7610,27 @@ Initialize the QML-partition with the NVS-module. This has to be done before fur
 (nvs-qml-read key)
 ```
 
-Read key from QML-partition, return the content as a byte array. This can fail if key does not exist or if (nvs-qml-init) has not been run.
+Read key from QML-partition, return the content as a byte array.
+
+Returns `nil` if a key has not been written to previously.
+
+---
+
+#### nvs-write
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.06+ |
+
+```clj
+(nvs-write key data)
+```
+
+Write data to key on nvs-partition. 
+
+If key already exists the old data will be replaced. 
+
+This can fail if there is not enough space. The space on the nvs partition is shared with eeprom-* commands. 
 
 ---
 
@@ -7486,17 +7648,31 @@ Write data to key on QML-partition. If key already exists the old data will be r
 
 ---
 
-#### nvs-qml-erase-key
+#### nvs-qml-erase-partition
 
 | Platforms | Firmware |
 |---|---|
 | Express | 6.06+ |
 
 ```clj
-(nvs-qml-erase-key key)
+(nvs-qml-erase-partition)
 ```
 
-Erase single key from QML-partition. This can fail if key does not exist or if (nvs-qml-init) has not been run.
+Erase all nvs data from qml partition and deinitialize. This allows the QML partition to be used for QML if it was previously used for nvs storage.
+
+---
+
+#### nvs-list
+
+| Platforms | Firmware |
+|---|---|
+| Express | 6.06+ |
+
+```clj
+(nvs-list)
+```
+
+Return a list with all existing NVS keys on the nvs partition.
 
 ---
 
@@ -7510,7 +7686,9 @@ Erase single key from QML-partition. This can fail if key does not exist or if (
 (nvs-qml-list)
 ```
 
-Returns a list with all existing NVS keys. If (nvs-qml-init) has not been run this always returns nil.
+Return a list with all existing NVS keys on the `qml` partition.
+
+If (nvs-qml-init) has not been run this always returns `nil`.
 
 ---
 

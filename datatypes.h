@@ -76,7 +76,8 @@ typedef enum {
 typedef enum {
 	FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO = 0,
 	FOC_CURRENT_SAMPLE_MODE_ALL_SENSORS,
-	FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT
+	FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT,
+ 	FOC_CURRENT_SAMPLE_MODE_BEST_SENSOR // Experimental, not used!
 } mc_foc_current_sample_mode;
 
 // Auxiliary output mode
@@ -211,6 +212,8 @@ typedef enum {
 	SENSOR_PORT_MODE_TLE5012_SSC_SW,
 	SENSOR_PORT_MODE_TLE5012_SSC_HW,
 	SENSOR_PORT_MODE_CUSTOM_ENCODER,
+	SENSOR_PORT_MODE_PWM,
+	SENSOR_PORT_MODE_PWM_ABI,
 } sensor_port_mode;
 
 typedef struct {
@@ -1123,6 +1126,8 @@ typedef enum {
 	COMM_FW_INFO							= 157,
 
 	COMM_CAN_UPDATE_BAUD_ALL				= 158,
+
+	COMM_MOTOR_ESTOP						= 159,
 } COMM_PACKET_ID;
 
 // CAN commands

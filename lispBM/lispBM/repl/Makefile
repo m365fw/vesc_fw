@@ -15,12 +15,20 @@ LBMFLAGS = -DFULL_RTS_LIB \
            -DLBM_USE_TIME_QUOTA \
            -DLBM_USE_ERROR_LINENO
 
+LDFLAGS =
+
+ifeq ($(PLATFORM), macos-arm64)
+  PLATFORM_INCLUDE += -I/opt/homebrew/include/ -I/opt/homebrew/opt/readline/include
+	LDFLAGS += -L/opt/homebrew/opt/readline/lib -L/opt/homebrew/lib
+# To make mmap work on macOS
+	LBMFLAGS += -D_DARWIN_C_SOURCE
+endif
 
 
-
-CCFLAGS =  -g -O2 -Wall -Wconversion -Wsign-compare -pedantic -std=c11 $(LBMFLAGS) -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
+CCFLAGS =  -g -O2 -Wall -Wconversion -Wsign-compare -pedantic -std=c11 $(LBMFLAGS) -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -fno-pie -no-pie
 
 PICCFLAGS = -O2 -Wall -Wconversion -pedantic -std=c11
+PI64CCFLAGS = -O2 -Wall -Wconversion -pedantic -std=c11 -DLBM64
 
 LISPBM_SRC += $(LISPBM_EVAL_CPS_SRC)
 
@@ -41,23 +49,23 @@ CCFLAGS_COV = -g -coverage -O0 -Wall -Wconversion -Wsign-compare -pedantic -std=
 
 LIBS = -lpthread -lreadline -lhistory -lpng
 
-all: CCFLAGS += -m32 
+all: CCFLAGS += -m32
 all: repl
 
-cov: CCFLAGS += -m32 
+cov: CCFLAGS += -m32
 cov: repl_cov
 
 
 all64: 	CCFLAGS += -DLBM64
 all64: repl
 
-sdl64: CCFLAGS += -DLBM64 -DWITH_SDL -I/usr/include/SDL2
-sdl64: LIBS += -lSDL2_image -lSDL2
+sdl64: CCFLAGS += -DLBM64 -DWITH_SDL $(shell pkg-config --cflags libpng sdl2 SDL2_image)
+sdl64: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image)
 sdl64: REPL_SRC += lbm_sdl.c
 sdl64: repl
 
-sdl: CCFLAGS += -DWITH_SDL -m32 -I/usr/include/SDL2
-sdl: LIBS += -lSDL2_image -lSDL2
+sdl: CCFLAGS += -DWITH_SDL -m32 $(shell pkg-config --cflags libpng sdl2 SDL2_image)
+sdl: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image)
 sdl: REPL_SRC += lbm_sdl.c
 sdl: repl
 
@@ -74,13 +82,16 @@ debug: CCFLAGS += -g
 debug: repl
 
 repl: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
-	gcc $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
+	gcc $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS) $(LDFLAGS)
 
 repl_cov: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
-	gcc $(CCFLAGS_COV) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl_cov $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
+	gcc $(CCFLAGS_COV) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl_cov $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS) $(LDFLAGS)
 
 pirepl: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
 	gcc $(PICCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
+
+pirepl64: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
+	gcc $(PI64CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
 
 clean:
 	rm -f repl

@@ -30,6 +30,29 @@ These should be added as a -D... flag to the C compiler for the LispBM compilati
 <li>LBM_USE_ERROR_LINENO - Reports the line in eval_cps.c where the error was triggered. For debug use.</li>
 </ul>
 
+The following preprocessor flags control code size optimizions on a per subsystem basis.
+<ul>
+<li>LBM_OPT_FUNDAMENTALS_SIZE</li>
+<li>LBM_OPT_FUNDAMENTALS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_ARRAY_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_ARRAY_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_DISPLAY_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_DISPLAY_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_MATH_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_MATH_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_MUTEX_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_MUTEX_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_RANDOM_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_RANDOM_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_RUNTIME_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_RUNTIME_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_SET_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_SET_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_STRING_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_STRING_EXTENSIONS_SIZE_AGGRESSIVE</li>
+<li>LBM_OPT_TTF_EXTENSIONS_SIZE</li>
+<li>LBM_OPT_TTF_EXTENSIONS_SIZE_AGGRESSIVE</li>
+
 <h2>Build on Linux</h2>
 
 <p> Start by cloning the LispBM repository. Open a terminal and issue command</p>
@@ -115,11 +138,24 @@ make sdl64
 
 <p> Or for 32bit.</p>
 
+<p><b>WARNING</b> if you are using UBUNTU 24.04(.0/.2) lts <b>DO NOT</b> "sudo atp install" the 32 bit sdl libraries.
+Doing so may render your system unusable as the apt solver is incorrectly deciding to uninstall key operating system
+packages. See <a href=https://bugs.launchpad.net/ubuntu/+source/libsdl2/+bug/2104920> bugreport </a>. Instead do the following: <p>
+
+@code
+sudo apt install aptitude
+sudo aptitude install libsdl2-dev:i386
+sudo aptitude install libsdl2-image-dev:i386
+@endcode
+
+<p> Then to build 32bit LBM with sdl do: </p>
+
 @code
 make sdl
 @endcode
 
 <p>The REPL with SDL requires <code>libsdl2-dev</code> and <code>libsdl2-image-dev</code> libraries or
 the 32 bit versions (for 32bit repl binary) <code>libsdl2-dev:i386</code> and <code>libsdl2-image-dev:i386</code>.</p>
+
 
 */

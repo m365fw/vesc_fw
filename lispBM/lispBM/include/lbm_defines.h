@@ -1,5 +1,6 @@
 /*
     Copyright 2022, 2024, 2025 Joel Svensson        svenssonjoel@yahoo.se
+              2025 Rasmus Söderhielm rasmus.soderhielm@gmail.com
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -32,6 +33,7 @@
 #define LBM_PTR_BIT                      0x00000001u
 #define LBM_PTR_VAL_MASK                 0x03FFFFFCu
 #define LBM_PTR_TYPE_MASK                0xFC000000u
+// TODO: Recall why PTR_NULL is given the value (0x03FFFFFCu >> 2)
 #define LBM_PTR_NULL                     (0x03FFFFFCu >> 2)
 
 // The address is an index into the const heap.
@@ -342,7 +344,7 @@
 #define SYM_IDENTITY            0x20040
 #define SYM_ARRAY               0x20041
 #define SYM_IS_STRING           0x20042
-
+#define SYM_IS_CONSTANT         0x20043
 
 // Apply funs:
 // Get their arguments in evaluated form on the stack.
@@ -372,7 +374,7 @@
 #define SYM_SORT                  0x30014
 #define SYM_REST_ARGS             0x30015
 #define SYM_ROTATE                0x30016
-#define SYM_POPRET                0x30017
+#define SYM_APPLY                 0x30017
 
 #define SYMBOL_KIND(X)          ((X) >> 16)
 #define SYMBOL_KIND_SPECIAL     0
@@ -521,6 +523,7 @@
 #define ENC_SYM_TRAP                  ENC_SYM(SYM_TRAP)
 #define ENC_SYM_CALL_CC_UNSAFE        ENC_SYM(SYM_CALL_CC_UNSAFE)
 #define ENC_SYM_CONT_SP               ENC_SYM(SYM_CONT_SP)
+#define ENC_SYM_APPLY                 ENC_SYM(SYM_APPLY)
 
 #define ENC_SYM_ADD           ENC_SYM(SYM_ADD)
 #define ENC_SYM_SUB           ENC_SYM(SYM_SUB)

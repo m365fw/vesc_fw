@@ -3304,7 +3304,7 @@ Stop IMU-driver and put IMU in sleep mode.
 
 ### GPIO
 
-These functions allow using GPIO-pins from lispBM. The UART and SWD pins can currently be used. NOTE: If you are using the SWD-pins a SWD-programmer won't work after that until the next reset. If you are using the hall sensor pins make sure that sensor port mode is not set to anything that will communicate with encoders using those pins. Leaving the sensor port in hall sensor mode should be fine.
+These functions allow using GPIO-pins from lispBM. NOTE: If you are using the SWD-pins a SWD-programmer won't work after that until the next reset. If you are using the hall sensor pins make sure that sensor port mode is not set to anything that will communicate with encoders using those pins. Leaving the sensor port in hall sensor mode should be fine.
 
 The gpio-extension are also available on the express-platform. There the pins are a number (e.g. 1, 2) instead of a symbol.
 
@@ -3335,6 +3335,8 @@ Configure GPIO pin to mode. Example:
 'pin-hall3  ; Sensor port hall3
 'pin-adc1   ; ADC1-pin on COMM-port
 'pin-adc2   ; ADC2-pin on COMM-port
+'pin-adc3   ; ADC3-pin on COMM-port (if available)
+'pin-adc4   ; ADC4-pin on COMM-port (if available)
 'pin-ppm    ; Signal-pin on PPM-port
 
 ; On express the pins are a number and not a symbol.
@@ -5171,6 +5173,7 @@ Possible events to register are
 (event-enable 'event-can-sid)  ; -> (event-can-sid . (id . data)), where id is U32 and data is a byte array
 (event-enable 'event-can-eid)  ; -> (event-can-eid . (id . data)), where id is U32 and data is a byte array
 (event-enable 'event-data-rx)  ; -> (event-data-rx . data), where data is a byte array
+(event-enable 'event-cmds-data-tx)  ; -> (event-cmds-data-tx data), where data is a byte array
 
 ; ESC Only
 (event-enable 'event-shutdown) ; -> event-shutdown
@@ -5200,6 +5203,9 @@ This event is sent when extended id CAN-frames are received.
 
 **event-data-rx**  
 This event is sent when custom app data is sent from VESC Tool or other connected devices. This works using all communication ports including USB, UART and CAN-bus.
+
+**event-cmds-data-tx**  
+This event is sent when the commands interface has a response packet to send. See the commands chapter for more details.
 
 **event-shutdown**  
 This event is sent when the ESC is about to shut down. Note that this event currently only works on hardware with a power switch. If that is not the case you could try to, for example, monitor the input voltage and simulate this event when it drops below a set level.
@@ -6235,6 +6241,66 @@ The optional arguments optUartNum, optPinRx and optPinTx can be used to specify 
 
 ---
 
+## Commands
+
+The VESC commands interface can be accessed from LispBM. This can be used to execute all commands supported by VESC Tool or to create a bridge to VESC Tool.
+
+---
+
+#### cmds-start-stop
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.06+ |
+
+```clj
+(cmds-start-stop optStart)
+```
+
+Start or stop commands interface. The commands interface needs to be started for the extensions and related events to work. This will allocate around 1k of memory for the packet interface. When stopping the allocated memory will be freed. The optional argument optStart can be set to true for start or to false for stop. If it is left out the commands interface will be started.
+
+---
+
+#### cmds-proc
+
+| Platforms | Firmware |
+|---|---|
+| ESC, Express | 6.06+ |
+
+```clj
+(cmds-proc data)
+```
+
+Process data byte array with the packet decoder. If a full command is decoded a C thread will be spawned that executes the command. If the command has a response to send this is done using the event-cmds-data-tx event. Spawning the thread will require around 2.6k of free memory (ESC) or 4k of memory (Express).
+
+The best way to illustrate how to use this is with an example. The following code uses TCP sockets on VESC Express to connect to the VESC TCP hub. VESC Tool can then connect to this express using the TCP Hub and run all commands as usual. It should be fairly simple to adapt this example to for example interface with an LTE modem.
+
+```clj
+; Connect to VESC TCP hub
+(def socket (tcp-connect "veschub.vedder.se" 65101))
+
+; Register with username user11 and password pass11
+(tcp-send socket "VESC:user11:pass11\n")
+
+(defun event-handler () {
+        (set-mailbox-size 3) ; Use small mailbox to avoid filling RAM with too many unsent packets
+        (loopwhile t
+            (recv
+                ((event-cmds-data-tx (? data)) (tcp-send socket data))
+                (_ nil)
+})))
+
+(event-register-handler (spawn event-handler))
+(event-enable 'event-cmds-data-tx)
+
+(cmds-start-stop true)
+(loopwhile t {
+        (cmds-proc (tcp-recv socket 512 100 false))
+})
+```
+
+---
+
 ## ESP-NOW
 
 The VESC Express has full support for ESP-NOW. It can be used in any combination of bluetooth and wifi, the only limitation is that it must use the same channel as the wifi. That is mainly an issue in station mode as there is no way to control the channel that the access point the express connects to uses.
@@ -6262,13 +6328,35 @@ Start ESP-NOW. This must be run before further ESP-NOW operations.
 | Express | 6.02+ |
 
 ```clj
-(esp-now-add-peer peer)
+(esp-now-add-peer peer optRate)
 ```
 
 Add peer. The argument is a list with the mac address of the peer to add. This must be run before esp-now-send as it only is possible to send data to peers that have been added. Example:
 
 ```clj
 (esp-now-add-peer '(255 255 255 255 255 255)) ; Add broadcast address as peer
+```
+
+The optional argument optRate (added in FW6.06) sets the wifi bitrate when sending data to this peer. By default it is 1 Mbps. The rate argument is a number between -1 and 15 with the following meaning:
+
+```
+-1: Keep default Rate
+0 : 1 Mbps with long preamble
+1 : 2 Mbps with long preamble
+2 : 5.5 Mbps with long preamble
+3 : 11 Mbps with long preamble
+4 : ???? Missing in ESP doc
+5 : 2 Mbps with short preamble
+6 : 5.5 Mbps with short preamble
+7 : 11 Mbps with short preamble
+8 : 48 Mbps
+9 : 24 Mbps
+10: 12 Mbps
+11: 6 Mbps
+12: 54 Mbps
+13: 36 Mbps
+14: 18 Mbps
+15: 9 Mbps
 ```
 
 ---

@@ -105,6 +105,9 @@ package_dict["TRONIC_250R"] = [['TRONIC_250R', default_name]]
 package_dict["X12_PRO24"] = [['x12_pro24', default_name]]
 package_dict["X12_PRO30"] = [['x12_pro30', default_name]]
 package_dict["Thor300"] = [['Thor300_20s', default_name]]
+package_dict["Thor301"] = [['Thor301', default_name]]
+package_dict["Thor400"] = [['Thor400', default_name]]
+package_dict["Thor400v2"] = [['Thor400v2', default_name]]
 package_dict["JetFleetF6_20s"] = [['JetFleetF6_20s', default_name]]
 package_dict["JetFleetF6_24s"] = [['JetFleetF6_24s', default_name]]
 package_dict["JetFleetF6_32s"] = [['JetFleetF6_32s', default_name]]
@@ -213,10 +216,20 @@ package_dict["RSR_DD_V1"] = [['RSR_DD_V1', default_name],
 package_dict["RSR_DD_V2"] = [['RSR_DD_V2', default_name]]
 package_dict["RSR_DD_V2.1"] = [['RSR_DD_V2.1', default_name]]
 package_dict["ITR_X1"] = [['itr_x1', default_name]]
-package_dict["Maxim"] = [['maxim', default_name],
-                    ['maxim_no_limits', no_limits_name]]
-package_dict["Maximp"] = [['maximp', default_name],
-                    ['maximp_no_limits', no_limits_name]]
+package_dict["Maxim_120"] = [['maxim_120', default_name],
+                    ['maxim_120_no_limits', no_limits_name]]
+package_dict["Maximp_120"] = [['maximp_120', default_name],
+                    ['maximp_120_no_limits', no_limits_name]]
+package_dict["Maxim_150"] = [['maxim_150', default_name],
+                    ['maxim_150_no_limits', no_limits_name]]
+package_dict["Maximp_150"] = [['maximp_150', default_name],
+                    ['maximp_150_no_limits', no_limits_name]]
+package_dict["Duet"] = [['duet', default_name],
+                    ['duet_no_limits', no_limits_name]]
+package_dict["Minim"] = [['minim', default_name],
+                    ['minim_no_limits', no_limits_name]]
+package_dict["Pronto"] = [['pronto', default_name],
+                    ['pronto_no_limits', no_limits_name]]
 
 # This is the firmware stub string
 res_firmwares_string = '        <file>TARGET_DESTINATION_DIRECTORY/TARGET_DESTINATION_FILENAME</file>\n'

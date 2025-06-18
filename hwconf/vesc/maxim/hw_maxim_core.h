@@ -20,8 +20,10 @@
 #ifndef HW_MAXIM_CORE_H_
 #define HW_MAXIM_CORE_H_
 
-#ifdef HWMAXIM
-	#define HW_NAME					"Maxim"
+#ifdef HWMAXIM_150
+	#define HW_NAME					"Maxim_150"
+#elif defined(HWMAXIM_120)
+	#define HW_NAME					"Maxim_120"
 #else
 	#error "Must define hardware type"
 #endif
@@ -176,6 +178,10 @@
 #define HW_ADC_EXT_PIN			7
 #define HW_ADC_EXT2_GPIO		GPIOA
 #define HW_ADC_EXT2_PIN			6
+#define HW_ADC_EXT3_GPIO		GPIOA
+#define HW_ADC_EXT3_PIN			3
+#define HW_ADC_EXT4_GPIO		GPIOC
+#define HW_ADC_EXT4_PIN			4
 
 // UART Peripheral
 #define HW_UART_DEV				SD3
@@ -264,14 +270,20 @@
 #define READ_HALL3()			palReadPad(HW_HALL_ENC_GPIO3, HW_HALL_ENC_PIN3)
 
 // Override dead time. See the stm32f4 reference manual for calculating this value.
-#define HW_DEAD_TIME_NSEC		600.0
+#define HW_DEAD_TIME_NSEC		500.0
 
 // Default setting overrides
 #ifndef MCCONF_L_MIN_VOLTAGE
 #define MCCONF_L_MIN_VOLTAGE			20.0		// Minimum input voltage
 #endif
+#ifdef HWMAXIM_120
+#ifndef MCCONF_L_MAX_VOLTAGE
+#define MCCONF_L_MAX_VOLTAGE			112.0	// Maximum input voltage
+#endif
+#else
 #ifndef MCCONF_L_MAX_VOLTAGE
 #define MCCONF_L_MAX_VOLTAGE			140.0	// Maximum input voltage
+#endif
 #endif
 #ifndef MCCONF_DEFAULT_MOTOR_TYPE
 #define MCCONF_DEFAULT_MOTOR_TYPE		MOTOR_TYPE_FOC
@@ -296,10 +308,17 @@
 #endif
 
 // Setting limits
-#define HW_LIM_CURRENT			-500.0, 500.0
-#define HW_LIM_CURRENT_IN		-500.0, 500.0
+#ifdef HWMAXIM_120
+#define HW_LIM_CURRENT			-650.0, 650.0
+#define HW_LIM_CURRENT_IN		-650.0, 650.0
 #define HW_LIM_CURRENT_ABS		0.0, 900.0
+#define HW_LIM_VIN				20.0, 115.0
+#else
+#define HW_LIM_CURRENT			-450.0, 450.0
+#define HW_LIM_CURRENT_IN		-450.0, 450.0
+#define HW_LIM_CURRENT_ABS		0.0, 800.0
 #define HW_LIM_VIN				20.0, 145.0
+#endif
 #define HW_LIM_ERPM				-200e3, 200e3
 #define HW_LIM_DUTY_MIN			0.0, 0.1
 #define HW_LIM_DUTY_MAX			0.0, 0.99

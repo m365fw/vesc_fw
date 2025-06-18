@@ -20,8 +20,10 @@
 #ifndef HW_MAXIMP_CORE_H_
 #define HW_MAXIMP_CORE_H_
 
-#ifdef HWMAXIMP
-	#define HW_NAME					"Maximp"
+#ifdef HWMAXIMP_150
+	#define HW_NAME					"Maximp_150"
+#elif defined(HWMAXIMP_120)
+	#define HW_NAME					"Maximp_120"
 #else
 	#error "Must define hardware type"
 #endif
@@ -85,17 +87,6 @@
 #define REG_5V_PIN				5
 #define REG_5V_ON()				palSetPad(REG_5V_GPIO, REG_5V_PIN)
 #define REG_5V_OFF()			palClearPad(REG_5V_GPIO, REG_5V_PIN)
-
-// Shutdown pin
-#define HW_SHUTDOWN_GPIO		GPIOC
-#define HW_SHUTDOWN_PIN			5
-#define HW_SHUTDOWN_HOLD_ON()	palSetPad(HW_SHUTDOWN_GPIO, HW_SHUTDOWN_PIN)
-#define HW_SHUTDOWN_HOLD_OFF()	palClearPad(HW_SHUTDOWN_GPIO, HW_SHUTDOWN_PIN)
-#define HW_SAMPLE_SHUTDOWN()	hw_sample_shutdown_button()
-
-// Hold shutdown pin early to wake up on short pulses
-#define HW_EARLY_INIT()			palSetPadMode(HW_SHUTDOWN_GPIO, HW_SHUTDOWN_PIN, PAL_MODE_OUTPUT_PUSHPULL); \
-								HW_SHUTDOWN_HOLD_ON();
 
 #define MCPWM_FOC_CURRENT_SAMP_OFFSET				(2) // Offset from timer top for ADC samples
 
@@ -179,6 +170,10 @@
 #define HW_ADC_EXT_PIN			7
 #define HW_ADC_EXT2_GPIO		GPIOA
 #define HW_ADC_EXT2_PIN			6
+#define HW_ADC_EXT3_GPIO		GPIOA
+#define HW_ADC_EXT3_PIN			3
+#define HW_ADC_EXT4_GPIO		GPIOC
+#define HW_ADC_EXT4_PIN			4
 
 // UART Peripheral
 #define HW_UART_DEV				SD3
@@ -266,14 +261,20 @@
 #define READ_HALL2()			palReadPad(HW_HALL_ENC_GPIO2, HW_HALL_ENC_PIN2)
 #define READ_HALL3()			palReadPad(HW_HALL_ENC_GPIO3, HW_HALL_ENC_PIN3)
 
-#define HW_DEAD_TIME_NSEC		800.0
+#define HW_DEAD_TIME_NSEC		600.0
 
 // Default setting overrides
 #ifndef MCCONF_L_MIN_VOLTAGE
 #define MCCONF_L_MIN_VOLTAGE			20.0		// Minimum input voltage
 #endif
+#ifdef HWMAXIMP_120
+#ifndef MCCONF_L_MAX_VOLTAGE
+#define MCCONF_L_MAX_VOLTAGE			112.0	// Maximum input voltage
+#endif
+#else
 #ifndef MCCONF_L_MAX_VOLTAGE
 #define MCCONF_L_MAX_VOLTAGE			140.0	// Maximum input voltage
+#endif
 #endif
 #ifndef MCCONF_DEFAULT_MOTOR_TYPE
 #define MCCONF_DEFAULT_MOTOR_TYPE		MOTOR_TYPE_FOC
@@ -298,10 +299,17 @@
 #endif
 
 // Setting limits
-#define HW_LIM_CURRENT			-900.0, 900.0
-#define HW_LIM_CURRENT_IN		-900.0, 900.0
+#ifdef HWMAXIMP_120
+#define HW_LIM_CURRENT			-1000.0, 1000.0
+#define HW_LIM_CURRENT_IN		-1000.0, 1000.0
 #define HW_LIM_CURRENT_ABS		0.0, 1500.0
+#define HW_LIM_VIN				20.0, 115.0
+#else
+#define HW_LIM_CURRENT			-750.0, 750.0
+#define HW_LIM_CURRENT_IN		-750.0, 750.0
+#define HW_LIM_CURRENT_ABS		0.0, 1200.0
 #define HW_LIM_VIN				20.0, 145.0
+#endif
 #define HW_LIM_ERPM				-200e3, 200e3
 #define HW_LIM_DUTY_MIN			0.0, 0.1
 #define HW_LIM_DUTY_MAX			0.0, 0.99

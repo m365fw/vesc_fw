@@ -1,0 +1,137 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - release_*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARM_GCC_ARCHIVE: downloads/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2
+  ARM_GCC_BIN: tools/gcc-arm-none-eabi-7-2018-q2-update/bin/arm-none-eabi-gcc
+
+jobs:
+  board-manifest:
+    runs-on: ubuntu-latest
+    outputs:
+      boards: ${{ steps.board-manifest.outputs.boards }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate board manifest
+        id: board-manifest
+        run: |
+          mapfile -t boards < <(
+            find hwconf -type f -name 'hw_*.h' ! -name '*core.h' -printf '%f\n' |
+            sed -e 's/^hw_//' -e 's/\.h$//' |
+            sort -u
+          )
+
+          json="["
+          separator=""
+          for board in "${boards[@]}"; do
+            json+="${separator}\"${board}\""
+            separator=","
+          done
+          json+="]"
+
+          echo "boards=${json}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: board-manifest
+    if: ${{ needs.board-manifest.outputs.boards != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        board: ${{ fromJson(needs.board-manifest.outputs.boards) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make python3 git wget xz-utils zip unzip
+
+      - name: Cache ARM GCC toolchain
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.ARM_GCC_ARCHIVE }}
+            tools/gcc-arm-none-eabi-7-2018-q2-update
+          key: ${{ runner.os }}-arm-gcc-7-2018q2
+
+      - name: Ensure ARM GCC toolchain is available
+        run: |
+          if [ ! -x "${ARM_GCC_BIN}" ]; then
+            make arm_sdk_install
+          fi
+
+      - name: Build firmware
+        run: make -j"$(nproc)" fw_${{ matrix.board }}
+
+      - name: Package board bundle
+        run: |
+          rm -rf artifacts
+          mkdir -p artifacts
+          tar -czf "artifacts/${{ matrix.board }}.tar.gz" -C build "${{ matrix.board }}"
+
+      - name: Upload board artifact
+        uses: actions/upload-artifact@v7
+        with:
+          compression-level: 0
+          name: firmware-${{ matrix.board }}-${{ github.ref_name }}-${{ github.sha }}
+          path: artifacts/${{ matrix.board }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release_') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download board artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*-${{ github.ref_name }}-${{ github.sha }}
+          path: release-assets
+          merge-multiple: true
+
+      - name: Compute release metadata
+        id: release-metadata
+        run: |
+          version="${GITHUB_REF_NAME#release_}"
+          version="${version//_/.}"
+          echo "name=Release ${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish branch release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: branch-${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.release-metadata.outputs.name }}
+          files: release-assets/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: false
+          overwrite_files: true

@@ -1,5 +1,5 @@
 /*
-	Copyright 2019 Benjamin Vedder	benjamin@vedder.se
+	Copyright 2016 Benjamin Vedder	benjamin@vedder.se
 
 	This file is part of the VESC firmware.
 
@@ -17,20 +17,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
-#ifndef LIBCANARD_CANARD_DRIVER_H_
-#define LIBCANARD_CANARD_DRIVER_H_
+#ifndef HW_FOCSTROT_V3_H_
+#define HW_FOCSTROT_V3_H_
 
-#include "ch.h"
-#include "hal.h"
+#define FOCSTROT_V3
+#define HW_NAME "FOCSTrot V3.0"
 
-typedef struct {
-	float age;
-	float value;
-} uavcan_cmd_info;
+#include "hw_FOCSTrot_core.h"
 
-void canard_driver_init(void);
-uavcan_cmd_info canard_driver_last_rawcmd(int can_if);
-uavcan_cmd_info canard_driver_last_rpmcmd(int can_if);
-int16_t canard_process_frame(CANRxFrame *msg, int interface);
-
-#endif /* LIBCANARD_CANARD_DRIVER_H_ */
+#endif /* HW_FOCSTROT_V3_H_ */

@@ -499,6 +499,9 @@
 #ifndef MCCONF_FOC_FW_Q_CURRENT_FACTOR
 #define MCCONF_FOC_FW_Q_CURRENT_FACTOR	0.05 // Factor of the FW-current to feed to the Q-axis to slow motor down when setting 0 current
 #endif
+#ifndef MCCONF_FOC_FW_BACKOFF
+#define MCCONF_FOC_FW_BACKOFF			2.0 // Backoff current factor during field weakening
+#endif
 #ifndef MCCONF_FOC_SPEED_SOURCE
 #define MCCONF_FOC_SPEED_SOURCE			FOC_SPEED_SRC_CORRECTED // Position source for speed trackers
 #endif
@@ -507,6 +510,9 @@
 #endif
 #ifndef MCCONF_FOC_OVERMOD_FACTOR
 #define MCCONF_FOC_OVERMOD_FACTOR 		1.0 // Overmodulation factor
+#endif
+#ifndef MCCONF_FOC_MAG_VD_MAX
+#define MCCONF_FOC_MAG_VD_MAX 			0.98 // Maximum D axis modulation
 #endif
 
 // GPD

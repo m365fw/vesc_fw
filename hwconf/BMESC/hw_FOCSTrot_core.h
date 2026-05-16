@@ -17,21 +17,17 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
-#ifndef HW_TRONIC_250R_H_
-#define HW_TRONIC_250R_H_
-
-#define HW_NAME                 "TRONIC_250R"
+#ifndef HW_FOCSTROT_CORE_H_
+#define HW_FOCSTROT_CORE_H_
 
 // HW properties
-//#define CURRENT_FILTER_ON()     palSetPad(GPIOD, 2)
-//#define CURRENT_FILTER_OFF()    palClearPad(GPIOD, 2)
 #define HW_HAS_3_SHUNTS
-#define HW_HAS_PHASE_FILTERS
-#define PHASE_FILTER_GPIO       GPIOC
-#define PHASE_FILTER_PIN        13
-#define PHASE_FILTER_ON()       palSetPad(PHASE_FILTER_GPIO, PHASE_FILTER_PIN)
-#define PHASE_FILTER_OFF()      palClearPad(PHASE_FILTER_GPIO, PHASE_FILTER_PIN)
-#define HW_DEAD_TIME_NSEC       500.0
+
+#ifdef FOCSTROT_V3
+#define HW_DEAD_TIME_NSEC       600.0
+#else
+#define HW_DEAD_TIME_NSEC       1200.0
+#endif
 
 // Macros
 #define LED_GREEN_ON()          palSetPad(GPIOB, 0)
@@ -52,7 +48,7 @@
  * 7:   IN6     ADC_EXT2
  * 8:   IN3     TEMP_PCB
  * 9:   IN14    TEMP_MOTOR
- * 10:  IN15    Shutdown
+ * 10:  IN15    NONE
  * 11:  IN13    AN_IN
  * 12:  Vrefint
  * 13:  IN0     SENS1
@@ -82,10 +78,14 @@
 
 // Component parameters (can be overridden)
 #ifndef V_REG
-#define V_REG                   3.3
+#define V_REG                   3.288
 #endif
 #ifndef VIN_R1
+#ifdef FOCSTROT_V3
 #define VIN_R1                  68000.0
+#else
+#define VIN_R1                  110000.0
+#endif
 #endif
 #ifndef VIN_R2
 #define VIN_R2                  2200.0
@@ -193,25 +193,11 @@
 #define HW_SPI_PORT_MISO        GPIOA
 #define HW_SPI_PIN_MISO         6
 
-#ifdef HW_HAS_DRV8323S
-// SPI for DRV8323S rev2
-#define DRV8323S_MOSI_GPIO       GPIOC
-#define DRV8323S_MOSI_PIN        12
-#define DRV8323S_MISO_GPIO       GPIOD
-#define DRV8323S_MISO_PIN        2
-#define DRV8323S_SCK_GPIO        GPIOC
-#define DRV8323S_SCK_PIN         13
-#define DRV8323S_CS_GPIO         GPIOC
-#define DRV8323S_CS_PIN          9
-#endif
-
-// IMU:
 // LSM6DS3
 #define LSM6DS3_SDA_GPIO        GPIOB
 #define LSM6DS3_SDA_PIN         2
 #define LSM6DS3_SCL_GPIO        GPIOA
 #define LSM6DS3_SCL_PIN         15
-#define LSM6DS3_SPEED_700KHZ
 
 // NRF SWD
 #define NRF5x_SWDIO_GPIO        GPIOB
@@ -235,47 +221,52 @@
 #define MCCONF_L_MIN_VOLTAGE            18.0        // Minimum input voltage
 #endif
 #ifndef MCCONF_L_MAX_VOLTAGE
-#define MCCONF_L_MAX_VOLTAGE            105.0    // Maximum input voltage
+#ifdef FOCSTROT_V3
+#define MCCONF_L_MAX_VOLTAGE            95.0    // Maximum input voltage
+#else
+#define MCCONF_L_MAX_VOLTAGE            140.0    // Maximum input voltage
+#endif
 #endif
 #ifndef MCCONF_L_CURRENT_MAX
-#define MCCONF_L_CURRENT_MAX                70.0    // Current limit in Amperes (Upper)
+#define MCCONF_L_CURRENT_MAX                120.0    // Current limit in Amperes (Upper)
 #endif
 #ifndef MCCONF_L_CURRENT_MIN
-#define MCCONF_L_CURRENT_MIN                -50.0   // Current limit in Amperes (Lower)
+#define MCCONF_L_CURRENT_MIN                -100.0   // Current limit in Amperes (Lower)
 #endif
 #ifndef MCCONF_L_IN_CURRENT_MAX
-#define MCCONF_L_IN_CURRENT_MAX             40.0    // Input current limit in Amperes (Upper)
+#define MCCONF_L_IN_CURRENT_MAX             60.0    // Input current limit in Amperes (Upper)
 #endif
 #ifndef MCCONF_L_IN_CURRENT_MIN
-#define MCCONF_L_IN_CURRENT_MIN             -20.0   // Input current limit in Amperes (Lower)
+#define MCCONF_L_IN_CURRENT_MIN             -50.0   // Input current limit in Amperes (Lower)
 #endif
 #ifndef MCCONF_L_MAX_ABS_CURRENT
-#define MCCONF_L_MAX_ABS_CURRENT            130.0   // The maximum absolute current above which a fault is generated
+#define MCCONF_L_MAX_ABS_CURRENT            240.0   // The maximum absolute current above which a fault is generated
 #endif
 #ifndef MCCONF_L_LIM_TEMP_FET_START
-#define MCCONF_L_LIM_TEMP_FET_START     80.0    // MOSFET temperature where current limiting should begin
+#define MCCONF_L_LIM_TEMP_FET_START     70.0    // MOSFET temperature where current limiting should begin
 #endif
 #ifndef MCCONF_L_LIM_TEMP_FET_END
-#define MCCONF_L_LIM_TEMP_FET_END       100.0   // MOSFET temperature where everything should be shut off
+#define MCCONF_L_LIM_TEMP_FET_END       85.0   // MOSFET temperature where everything should be shut off
 #endif
 #ifndef MCCONF_DEFAULT_MOTOR_TYPE
 #define MCCONF_DEFAULT_MOTOR_TYPE       MOTOR_TYPE_FOC
 #endif
 #ifndef MCCONF_FOC_F_ZV
-#define MCCONF_FOC_F_ZV                 30000.0
-#endif
-#ifndef MCCONF_L_SLOW_ABS_OVERCURRENT
-#define MCCONF_L_SLOW_ABS_OVERCURRENT  false  // Use the filtered (and hence slower) current for the overcurrent fault detection
+#define MCCONF_FOC_F_ZV                 26000.0
 #endif
 
 // Setting limits
-#define HW_LIM_CURRENT          -250.0, 250.0
-#define HW_LIM_CURRENT_IN       -20.0, 120.0
-#define HW_LIM_CURRENT_ABS      0.0, 300.0
-#define HW_LIM_VIN              18.0, 110.0
+#ifdef FOCSTROT_V3
+#define HW_LIM_CURRENT          -180.0, 180.0
+#define HW_LIM_CURRENT_IN       -80.0, 80.0
+#define HW_LIM_CURRENT_ABS      0.0, 250.0
+#define HW_LIM_VIN              18.0, 95.0
+#else
+#define HW_LIM_VIN              18.0, 140.0
+#endif
 #define HW_LIM_ERPM             -200e3, 200e3
 #define HW_LIM_DUTY_MIN         0.0, 0.1
 #define HW_LIM_DUTY_MAX         0.0, 0.99
 #define HW_LIM_TEMP_FET         -40.0, 110.0
 
-#endif /* HW_TRONIC_250R_H_ */
+#endif /* HW_FOCSTROT_CORE_H_ */
